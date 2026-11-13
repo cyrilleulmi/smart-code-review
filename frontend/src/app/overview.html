@@ -1,0 +1,77 @@
+@let p = pr();
+@let total = store.totalProgress();
+<div class="hero">
+  <div class="meta">
+    <span class="repo">{{ p.owner }}/{{ p.repo }}</span>
+    <span class="num">#{{ p.number }}</span>
+    @if (p.draft) {
+      <span class="tag">Draft</span>
+    }
+  </div>
+  <h1>{{ p.title }}</h1>
+  <div class="sub">
+    <span><app-icon name="branch" [size]="13" /> {{ p.headRef }} → {{ p.baseRef }}</span>
+    <span>von <b>{{ p.author }}</b></span>
+    <span class="add">+{{ p.additions }}</span><span class="del">−{{ p.deletions }}</span>
+    <span>{{ p.changedFiles }} Dateien</span>
+    <span>{{ inlineCount() }} Inline-Kommentare</span>
+  </div>
+  <div class="total">
+    <div class="bar"><div class="fill" [style.width.%]="percent(total)"></div></div>
+    <span><b>{{ percent(total) }}%</b> · {{ total.ok }} von {{ total.total }} geänderten Zeilen als ok markiert</span>
+  </div>
+</div>
+
+<h2>Vorgeschlagene Review-Reihenfolge</h2>
+<div class="cats">
+  @for (c of categories(); track c.id; let i = $index) {
+    <button type="button" class="cat" [class]="'cat c-' + c.id" (click)="openCategory(c.id)">
+      <span class="idx">{{ i + 1 }}</span>
+      <app-icon [name]="c.icon" [size]="20" />
+      <span class="body">
+        <span class="label">{{ c.label }}</span>
+        <span class="desc">{{ c.description }}</span>
+        <span class="stats">{{ c.groups.length }} {{ c.id === 'flows' ? 'Flows' : 'Gruppen' }} · {{ c.segmentCount }} Blöcke</span>
+      </span>
+      <span class="ring" [style.--p]="percent(c.progress)">
+        <span>{{ percent(c.progress) }}%</span>
+      </span>
+    </button>
+  }
+</div>
+
+<div class="cols">
+  <section>
+    <h2>Beschreibung</h2>
+    <div class="desc-box">{{ p.body || 'Keine Beschreibung.' }}</div>
+  </section>
+  <section>
+    <h2>Allgemeine Kommentare</h2>
+    @for (c of generalComments(); track c.id) {
+      <div class="comment">
+        @if (c.avatarUrl) {
+          <img [src]="c.avatarUrl" alt="" />
+        }
+        <div>
+          <div class="cmeta"><b>{{ c.author }}</b> · {{ time(c.createdAt) }}</div>
+          <div class="cbody">{{ c.body }}</div>
+        </div>
+      </div>
+    } @empty {
+      <p class="muted">Noch keine allgemeinen Kommentare.</p>
+    }
+    <div class="editor">
+      <textarea rows="3" placeholder="Allgemeiner Kommentar zum PR – wird sofort auf GitHub veröffentlicht" [value]="draft()" (input)="input($event)"></textarea>
+      <button type="button" class="btn primary" [disabled]="sending() || !draft().trim()" (click)="send()">Kommentieren</button>
+    </div>
+
+    @if (log().length) {
+      <h2>Letzte Markierungen</h2>
+      <ul class="log">
+        @for (l of log(); track $index) {
+          <li><span class="who">{{ l.by }}</span> {{ l.action === 'ok' ? '✓' : '✗' }} {{ l.count }} Zeilen · <code>{{ l.scope }}</code> <span class="muted">{{ time(l.at) }}</span></li>
+        }
+      </ul>
+    }
+  </section>
+</div>

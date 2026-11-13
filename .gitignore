@@ -1,0 +1,5 @@
+# local review data when running via docker compose
+/data/
+.idea/
+*.iml
+.DS_Store

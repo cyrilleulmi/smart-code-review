@@ -1,0 +1,14 @@
+# Native build + run in Docker. Needs a GitHub token in the environment:
+#   PowerShell: $env:GITHUB_TOKEN = gh auth token; docker compose up --build
+#   bash:       GITHUB_TOKEN=$(gh auth token) docker compose up --build
+services:
+  smart-code-review:
+    build: .
+    image: smart-code-review:latest
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      GITHUB_TOKEN: ${GITHUB_TOKEN:?Set GITHUB_TOKEN, e.g. from `gh auth token`}
+    volumes:
+      # Same layout as ~/.smart-code-review when running locally; agents can read/write it here.
+      - ./data:/data

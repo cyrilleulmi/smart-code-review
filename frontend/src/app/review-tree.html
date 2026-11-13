@@ -1,0 +1,50 @@
+<div class="tabs" role="tablist">
+  <button type="button" role="tab" [class.active]="tab() === 'categories'" (click)="setTab('categories')">Kategorien</button>
+  <button type="button" role="tab" [class.active]="tab() === 'flows'" (click)="setTab('flows')">
+    Flows <span class="badge">{{ store.bundle()?.analysis?.flows?.length ?? 0 }}</span>
+  </button>
+  <button type="button" role="tab" [class.active]="tab() === 'files'" (click)="setTab('files')">
+    Dateien <span class="badge">{{ store.bundle()?.files?.length ?? 0 }}</span>
+  </button>
+</div>
+
+<div class="tree" role="tree">
+  @if (tab() !== 'files') {
+    <div class="row overview" [class.selected]="store.selection().kind === 'overview'" (click)="store.select({ kind: 'overview' })">
+      <span class="chev"></span>
+      <app-icon name="home" [size]="14" />
+      <span class="label">Übersicht</span>
+    </div>
+  }
+  @for (n of rows(); track n.id) {
+    @let p = progress(n);
+    <div class="row" role="treeitem" [class]="'row d' + n.depth + ' ' + (n.css ?? '')" [class.selected]="isSelected(n)"
+         [class.done]="p.total > 0 && p.ok === p.total" [style.padding-left.px]="6 + n.depth * 16" (click)="open(n)" [title]="n.label">
+      <span class="chev" (click)="n.children?.length ? toggleOpen(n, $event) : null">
+        @if (n.children?.length) {
+          <app-icon [name]="isOpen(n) ? 'chevronDown' : 'chevronRight'" [size]="12" />
+        }
+      </span>
+      @if (n.symbolKind !== undefined) {
+        <app-symbol-badge [kind]="n.symbolKind" />
+      } @else if (n.icon) {
+        <app-icon [name]="n.icon" [size]="14" class="ico" />
+      }
+      <span class="label">{{ n.label }}</span>
+      @if (n.hint) {
+        <span class="hint">{{ n.hint }}</span>
+      }
+      <span class="spacer"></span>
+      @if (p.total > 0) {
+        @if (p.ok === p.total) {
+          <app-icon name="check" [size]="13" class="okicon" />
+        } @else {
+          <span class="cnt">{{ p.ok }}/{{ p.total }}</span>
+        }
+        <button type="button" class="mark" (click)="mark(n, $event)" [title]="p.ok === p.total ? 'Markierung entfernen' : 'Alles darin als ok markieren'">
+          <app-icon name="check" [size]="12" />
+        </button>
+      }
+    </div>
+  }
+</div>

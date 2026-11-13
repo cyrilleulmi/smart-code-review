@@ -1,0 +1,281 @@
+/* SmartCodeReview - IntelliJ "New UI" dark look */
+
+:root {
+  --font-ui: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
+  --font-code: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+  --code-size: 13px;
+  --code-line: 20px;
+
+  --bg-editor: #1e1f22;
+  --bg-panel: #2b2d30;
+  --bg-panel-2: #232427;
+  --bg-hover: #393b40;
+  --bg-selected: #2e436e;
+  --bg-selected-soft: #43454a;
+  --border: #393b40;
+  --border-strong: #4e5157;
+
+  --fg: #dfe1e5;
+  --fg-muted: #9da0a8;
+  --fg-dim: #6f737a;
+  --code-fg: #bcbec4;
+  --gutter-fg: #4b5059;
+
+  --accent: #3574f0;
+  --accent-fg: #548af7;
+  --ok: #5fb865;
+  --ok-border: #3f6e45;
+  --ok-head: #26332a;
+
+  --add-bg: rgba(84, 155, 96, 0.17);
+  --add-bg-ok: rgba(84, 155, 96, 0.07);
+  --add-fg: #6aab73;
+  --del-bg: rgba(212, 98, 98, 0.16);
+  --del-bg-ok: rgba(212, 98, 98, 0.06);
+  --del-fg: #d46c6c;
+
+  --file-added: #73bd79;
+  --file-modified: #6ca0f0;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: var(--bg-editor);
+  color: var(--fg);
+  font: 13px/1.4 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ------------------------------------------------------------- shared bits */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--bg-panel);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    background: var(--bg-hover);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  &.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+
+    &:hover:not(:disabled) {
+      background: #2f68d8;
+    }
+  }
+
+  &.success {
+    background: var(--ok);
+    border-color: var(--ok);
+    color: #10210f;
+  }
+}
+
+.view-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+
+  > app-icon {
+    color: var(--fg-muted);
+  }
+
+  .titles {
+    min-width: 0;
+  }
+
+  h1 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  p {
+    margin: 3px 0 0;
+    color: var(--fg-muted);
+    font-size: 12.5px;
+  }
+
+  .spacer {
+    flex: 1;
+  }
+
+  .progress-text {
+    color: var(--fg-muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--bg-hover);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  vertical-align: -2px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+kbd {
+  font: 11px var(--font-ui);
+  padding: 1px 5px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--bg-panel);
+}
+
+/* ------------------------------------------------------------- syntax colours (IntelliJ "Dark" scheme) */
+
+.hljs-keyword,
+.hljs-literal,
+.hljs-selector-tag,
+.hljs-meta .hljs-keyword {
+  color: #cf8e6d;
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-template-tag,
+.hljs-addition {
+  color: #6aab73;
+}
+
+.hljs-number,
+.hljs-symbol {
+  color: #2aacb8;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: #7a7e85;
+  font-style: italic;
+}
+
+.hljs-doctag {
+  color: #67a37c;
+  font-style: italic;
+}
+
+.hljs-title.function_,
+.hljs-title.function_.invoke__ {
+  color: #56a8f5;
+}
+
+.hljs-title.class_,
+.hljs-title,
+.hljs-type {
+  color: #bcbec4;
+}
+
+.hljs-built_in {
+  color: #c77dbb;
+}
+
+.hljs-property,
+.hljs-attr,
+.hljs-variable.language_ {
+  color: #c77dbb;
+}
+
+.hljs-meta,
+.hljs-meta .hljs-string {
+  color: #b3ae60;
+}
+
+.hljs-tag,
+.hljs-name,
+.hljs-selector-class,
+.hljs-selector-id {
+  color: #d5b778;
+}
+
+.hljs-attribute {
+  color: #bababa;
+}
+
+.hljs-params,
+.hljs-variable,
+.hljs-subst {
+  color: #bcbec4;
+}
+
+.hljs-section,
+.hljs-bullet {
+  color: #cf8e6d;
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 600;
+}

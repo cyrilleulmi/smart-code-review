@@ -1,0 +1,152 @@
+:host {
+  display: block;
+}
+
+.diagram {
+  position: relative;
+  margin: 0 0 20px;
+  padding: 16px;
+  overflow-x: auto;
+  background:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0) 0 0 / 16px 16px,
+    var(--bg-panel-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+
+  > svg,
+  > .node {
+    position: relative;
+  }
+}
+
+.edges {
+  display: block;
+  color: #5b6170;
+  overflow: visible;
+}
+
+.edge {
+  fill: none;
+  stroke: #5b6170;
+  stroke-width: 1.5;
+  transition: stroke 0.15s;
+
+  &.hot {
+    stroke: var(--accent);
+    color: var(--accent);
+  }
+
+  &.back {
+    stroke-dasharray: 4 3;
+  }
+}
+
+.node {
+  position: absolute !important;
+  margin: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 8px;
+  box-sizing: border-box;
+  background: var(--bg-editor);
+  border: 1px solid #43454a;
+  border-radius: 8px;
+  color: var(--fg);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+
+  &:hover {
+    border-color: var(--accent);
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+    transform: translateY(-1px);
+  }
+
+  &.quick {
+    border-style: dashed;
+  }
+
+  &.done {
+    border-color: var(--ok-border);
+    background: var(--ok-head);
+  }
+
+  .no {
+    display: inline-grid;
+    place-items: center;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .txt {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .name {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-code);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .file {
+    color: var(--fg-dim);
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cnt {
+    color: var(--fg-muted);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .ok {
+    color: var(--ok);
+  }
+}
+
+.cards {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-bottom: 40px;
+}
+
+.rails {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 1;
+}
+
+.rail {
+  fill: none;
+  stroke: rgba(84, 138, 247, 0.45);
+  stroke-width: 1.5;
+  transition: stroke 0.15s;
+
+  &.hot {
+    stroke: var(--accent-fg);
+    stroke-width: 2;
+  }
+}

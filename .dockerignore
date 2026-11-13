@@ -1,0 +1,7 @@
+**/node_modules
+**/.angular
+backend/target
+backend/src/main/resources/META-INF/resources
+data
+.git
+docs

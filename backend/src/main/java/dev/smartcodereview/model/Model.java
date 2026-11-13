@@ -1,0 +1,185 @@
+package dev.smartcodereview.model;
+
+import io.quarkus.runtime.annotations.RegisterForReflection;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * All data shapes of SmartCodeReview in one place. They are serialised 1:1 to the JSON files in the
+ * data directory and to the REST API, so field names are part of the public (agent-facing) contract.
+ */
+public final class Model {
+
+    private Model() {
+    }
+
+    public static final int SCHEMA_VERSION = 1;
+
+    // ---------------------------------------------------------------- pull requests
+
+    /** Identifies a pull/merge request across providers. */
+    @RegisterForReflection
+    public record PrRef(String provider, String owner, String repo, int number) {
+        public String key() {
+            return provider + "/" + owner + "/" + repo + "/" + number;
+        }
+    }
+
+    @RegisterForReflection
+    public record PullRequestSummary(
+            String provider, String owner, String repo, int number,
+            String title, String author, String url, boolean draft,
+            String createdAt, String updatedAt,
+            List<String> roles,
+            Progress progress) {
+    }
+
+    @RegisterForReflection
+    public record Progress(int ok, int total) {
+    }
+
+    @RegisterForReflection
+    public record PullRequestInfo(
+            String provider, String owner, String repo, int number,
+            String title, String body, String author, String url, boolean draft, String state,
+            String baseRef, String headRef, String baseSha, String headSha,
+            String createdAt, String updatedAt,
+            int additions, int deletions, int changedFiles) {
+    }
+
+    @RegisterForReflection
+    public record User(String login, String name, String avatarUrl) {
+    }
+
+    // ---------------------------------------------------------------- diff
+
+    /** type: "add" | "del" | "ctx". key: "N<newLine>" for add/ctx, "O<oldLine>" for del. */
+    @RegisterForReflection
+    public record DiffLine(String type, Integer oldLine, Integer newLine, String key, String text) {
+        public boolean changed() {
+            return !"ctx".equals(type);
+        }
+    }
+
+    @RegisterForReflection
+    public record Hunk(int index, String header, int oldStart, int oldLines, int newStart, int newLines,
+                       List<DiffLine> lines) {
+    }
+
+    /** status: added | modified | removed | renamed | copied | changed | unchanged */
+    @RegisterForReflection
+    public record DiffFile(String path, String previousPath, String status, int additions, int deletions,
+                           String language, boolean patchMissing, List<Hunk> hunks) {
+    }
+
+    /** The frozen state of a PR as fetched from the provider. New commits are out of scope (see docs). */
+    @RegisterForReflection
+    public record Snapshot(int schemaVersion, String fetchedAt, PullRequestInfo pr, List<DiffFile> files) {
+    }
+
+    // ---------------------------------------------------------------- analysis
+
+    /**
+     * A line as shown in a code block. type: add | del | ctx | gap.
+     * own=false means the line is changed but belongs to another segment (shown dimmed).
+     * inDiff=true means GitHub accepts an inline comment on that line.
+     * refs: on call sites, the segments that are called from here.
+     */
+    @RegisterForReflection
+    public record DisplayLine(String type, Integer oldLine, Integer newLine, String key, String text,
+                              boolean own, boolean inDiff, Integer gapSize, List<LineRef> refs) {
+    }
+
+    @RegisterForReflection
+    public record LineRef(String segmentId, String symbol) {
+    }
+
+    /**
+     * The unit of review: a coherent piece of a change (a hunk, a changed function, ...).
+     * kind: hunk | symbol | module. lineKeys: the changed lines this segment owns (markable).
+     */
+    @RegisterForReflection
+    public record Segment(String id, String path, String language, String kind,
+                          String symbol, String symbolKind, Integer startLine, Integer endLine,
+                          String category, String group, String ruleId, String reason,
+                          List<String> lineKeys, List<DisplayLine> lines) {
+    }
+
+    @RegisterForReflection
+    public record Group(String id, String label, String description, String flowId, List<String> segmentIds) {
+    }
+
+    @RegisterForReflection
+    public record Category(String id, String label, String description, String icon, List<Group> groups) {
+    }
+
+    /** depth: distance from the entry point in the call tree; parentSegmentId: the caller (null for entries). */
+    @RegisterForReflection
+    public record FlowStep(String segmentId, int order, int depth, String parentSegmentId) {
+    }
+
+    /** line: new-file line in the caller where the callee is referenced. */
+    @RegisterForReflection
+    public record FlowEdge(String from, String to, Integer line, String via) {
+    }
+
+    @RegisterForReflection
+    public record Flow(String id, String title, List<FlowStep> steps, List<FlowEdge> edges) {
+    }
+
+    @RegisterForReflection
+    public record Analysis(int schemaVersion, String generatedAt, String headSha, String rulesHash,
+                           List<Segment> segments, List<Category> categories, List<Flow> flows) {
+    }
+
+    // ---------------------------------------------------------------- local review state
+
+    @RegisterForReflection
+    public record LogEntry(String at, String by, String action, String scope, int count) {
+    }
+
+    /** ok: path -> sorted list of line keys marked as "ok". Lives only locally. */
+    @RegisterForReflection
+    public record ReviewState(int schemaVersion, String pr, String headSha,
+                              Map<String, List<String>> ok, List<LogEntry> log) {
+    }
+
+    @RegisterForReflection
+    public record LineMark(String path, String key) {
+    }
+
+    /** scope is free text for the log, e.g. "group:quick-wins/translations" or "line". by: "ui" or "agent:<name>". */
+    @RegisterForReflection
+    public record MarkRequest(List<LineMark> lines, boolean ok, String scope, String by) {
+    }
+
+    // ---------------------------------------------------------------- comments
+
+    /** kind: review (inline) | issue (general). side: RIGHT (new) | LEFT (old). */
+    @RegisterForReflection
+    public record Comment(long id, String kind, String path, Integer line, String side, String key,
+                          String body, String author, String avatarUrl, String createdAt, String url,
+                          Long inReplyTo) {
+    }
+
+    @RegisterForReflection
+    public record NewComment(String path, Integer line, String side, String body, Long inReplyTo) {
+    }
+
+    // ---------------------------------------------------------------- api
+
+    @RegisterForReflection
+    public record FileSummary(String path, String previousPath, String status, int additions, int deletions,
+                              String language) {
+    }
+
+    @RegisterForReflection
+    public record ReviewBundle(PullRequestInfo pr, String fetchedAt, String dataPath, List<FileSummary> files,
+                               Analysis analysis, ReviewState state) {
+    }
+
+    @RegisterForReflection
+    public record Me(User user, String dataDir, String providers) {
+    }
+}

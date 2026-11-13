@@ -1,0 +1,121 @@
+@let seg = segment();
+<header class="head" (click)="headerClick()" [class.clickable]="allOk()">
+  @if (step(); as n) {
+    <span class="step-no">{{ n }}</span>
+  }
+  @if (seg.symbol) {
+    <app-symbol-badge [kind]="seg.symbolKind" />
+    <span class="symbol">{{ seg.symbol }}</span>
+  }
+  <span class="path" [title]="seg.path"><span class="dir">{{ dirName() }}</span>{{ fileName() }}</span>
+  @if (seg.startLine) {
+    <span class="lines">:{{ seg.startLine }}</span>
+  }
+  <span class="chip" [class]="'chip cat-' + seg.category" [title]="seg.reason">{{ seg.category === 'logic' ? 'Logik' : seg.group }}</span>
+  @if (calledBy(); as by) {
+    <button class="called-by" type="button" (click)="$event.stopPropagation(); calledByClick.emit()">
+      <app-icon name="arrowLeft" [size]="12" /> {{ by }}
+    </button>
+  }
+  <span class="spacer"></span>
+  @if (collapsed()) {
+    <span class="hint">eingeklappt</span>
+  }
+  <span class="count" [class.complete]="allOk()">{{ progress().ok }}/{{ progress().total }}</span>
+  <button type="button" class="ok-btn" [class.on]="allOk()" (click)="toggleBlock($event)"
+          [title]="allOk() ? 'Markierung entfernen' : 'Ganzen Block als ok markieren'">
+    <app-icon name="check" [size]="14" /> {{ allOk() ? 'Ok' : 'Block ok' }}
+  </button>
+</header>
+
+@if (!collapsed()) {
+  <div class="code" role="table">
+    @for (line of seg.lines; track $index; let i = $index) {
+      @if (line.type === 'gap') {
+        <div class="gap">⋯ {{ line.text ?? (line.gapSize + ' unveränderte Zeilen') }}</div>
+      } @else {
+        <div class="row" [class]="'row t-' + line.type" [class.ok]="line.own && isOk(line)" [class.foreign]="!line.own && line.type !== 'ctx'"
+             [class.has-refs]="!!line.refs?.length" [attr.data-new]="line.newLine">
+          <span class="g-check">
+            @if (line.own) {
+              <button type="button" class="check" [class.on]="isOk(line)" (click)="toggleLine(i, $event)"
+                      title="Als ok markieren (Shift-Klick: Bereich)">
+                @if (isOk(line)) {
+                  <app-icon name="check" [size]="11" />
+                }
+              </button>
+            }
+          </span>
+          <span class="g-num">{{ line.oldLine ?? '' }}</span>
+          <span class="g-num">{{ line.newLine ?? '' }}</span>
+          <span class="g-act">
+            @if (line.inDiff && line.key) {
+              <button type="button" class="add-comment" (click)="openEditor(line)" title="Kommentar auf GitHub">
+                <app-icon name="comment" [size]="12" />
+              </button>
+            }
+          </span>
+          <span class="g-sign">{{ line.type === 'add' ? '+' : line.type === 'del' ? '−' : '' }}</span>
+          <span class="src"><code [innerHTML]="html()[i]"></code>
+            @for (ref of line.refs ?? []; track ref.segmentId) {
+              <button type="button" class="ref" (click)="refClick.emit(ref.segmentId)" [title]="'Springe zu ' + ref.symbol">
+                <app-icon name="arrowRight" [size]="11" />
+                @if (stepOf()[ref.segmentId]; as n) {
+                  <b>{{ n }}</b>
+                }
+                {{ ref.symbol }}
+              </button>
+            }
+          </span>
+        </div>
+
+        @if (showThreads(line)) {
+          @for (t of threads().get(line.key!) ?? []; track t.root.id) {
+            <div class="thread">
+              @for (c of [t.root].concat(t.replies); track c.id) {
+                <div class="comment">
+                  @if (c.avatarUrl) {
+                    <img [src]="c.avatarUrl" alt="" />
+                  }
+                  <div>
+                    <div class="meta"><b>{{ c.author }}</b> · {{ time(c.createdAt) }}
+                      <a [href]="c.url" target="_blank" rel="noopener" title="Auf GitHub öffnen"><app-icon name="external" [size]="11" /></a>
+                    </div>
+                    <div class="body">{{ c.body }}</div>
+                  </div>
+                </div>
+              }
+              @if (replyTo() === t.root.id) {
+                <div class="editor">
+                  <textarea rows="3" placeholder="Antwort … (Ctrl+Enter: senden, Esc: abbrechen)" [value]="draft()"
+                            (input)="input($event)" (keydown)="keydown($event, null)" autofocus></textarea>
+                  <div class="actions">
+                    <button type="button" class="btn" (click)="cancel()">Abbrechen</button>
+                    <button type="button" class="btn primary" [disabled]="sending() || !draft().trim()" (click)="submit(null)">Antworten</button>
+                  </div>
+                </div>
+              } @else {
+                <button type="button" class="reply" (click)="openReply(t)">Antworten</button>
+              }
+            </div>
+          }
+        }
+
+        @if (editorKey() === line.key && line.key) {
+          <div class="thread new">
+            <div class="editor">
+              <textarea rows="3" placeholder="Kommentar zu Zeile {{ line.newLine ?? line.oldLine }} – wird sofort auf GitHub veröffentlicht (Ctrl+Enter)"
+                        [value]="draft()" (input)="input($event)" (keydown)="keydown($event, line)" autofocus></textarea>
+              <div class="actions">
+                <button type="button" class="btn" (click)="cancel()">Abbrechen</button>
+                <button type="button" class="btn primary" [disabled]="sending() || !draft().trim()" (click)="submit(line)">
+                  {{ sending() ? 'Sende …' : 'Kommentieren' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        }
+      }
+    }
+  </div>
+}

@@ -1,0 +1,138 @@
+@let b = store.bundle();
+<header class="toolbar">
+  <div class="logo" title="SmartCodeReview">SC</div>
+  @if (b) {
+    <button type="button" class="widget project" (click)="store.select({ kind: 'overview' })" title="Übersicht">
+      <span class="avatar-sq">{{ b.pr.repo.charAt(0).toUpperCase() }}</span>
+      {{ b.pr.repo }}
+    </button>
+    <span class="widget branch" [title]="b.pr.headRef + ' → ' + b.pr.baseRef">
+      <app-icon name="branch" [size]="14" /> {{ b.pr.headRef }} <span class="dim">→ {{ b.pr.baseRef }}</span>
+    </span>
+    <span class="pr-title" [title]="b.pr.title">#{{ b.pr.number }} {{ b.pr.title }}</span>
+  } @else {
+    <span class="widget project"><span class="avatar-sq">S</span> SmartCodeReview</span>
+  }
+  <span class="spacer"></span>
+  @if (b) {
+    <button type="button" class="tb-btn" [class.on]="store.collapseDone()" (click)="store.collapseDone.set(!store.collapseDone())"
+            title="Vollständig markierte Blöcke einklappen">
+      <app-icon [name]="store.collapseDone() ? 'collapse' : 'expand'" />
+    </button>
+    <button type="button" class="tb-btn" (click)="store.reanalyse()" title="Neu analysieren (Regeln aus rules.json)">
+      <app-icon name="analyse" />
+    </button>
+    <button type="button" class="tb-btn" (click)="store.reload()" title="Von GitHub neu laden">
+      <app-icon name="refresh" />
+    </button>
+    <a class="tb-btn" [href]="b.pr.url" target="_blank" rel="noopener" title="Auf GitHub öffnen"><app-icon name="external" /></a>
+    <button type="button" class="tb-btn" (click)="store.close()" title="Pull Request schliessen"><app-icon name="close" /></button>
+  } @else {
+    <button type="button" class="tb-btn" (click)="store.loadPrs()" title="Pull Requests neu laden"><app-icon name="refresh" /></button>
+  }
+  @if (store.me(); as me) {
+    <span class="user" [title]="me.user.login">
+      @if (me.user.avatarUrl) {
+        <img [src]="me.user.avatarUrl" alt="" />
+      }
+    </span>
+  }
+</header>
+
+<div class="main">
+  <nav class="stripe" aria-label="Tool-Fenster">
+    <button type="button" [class.active]="tool() === 'prs'" (click)="toggleTool('prs')" title="Pull Requests (Alt+1)">
+      <app-icon name="pr" [size]="18" />
+    </button>
+    <button type="button" [class.active]="tool() === 'review'" (click)="toggleTool('review')" [disabled]="!b" title="Review (Alt+2)">
+      <app-icon name="review" [size]="18" />
+    </button>
+  </nav>
+
+  @if (tool()) {
+    <aside class="tool" [style.width.px]="toolWidth()">
+      <div class="tool-head">
+        <span>{{ tool() === 'prs' ? 'Pull Requests' : 'Review' }}</span>
+        <span class="spacer"></span>
+        <button type="button" class="tb-btn small" (click)="tool.set(null)" title="Ausblenden"><app-icon name="close" [size]="13" /></button>
+      </div>
+      <div class="tool-body">
+        @if (tool() === 'prs') {
+          <app-pr-list (click)="openPr($event)" />
+        } @else if (b) {
+          <app-review-tree />
+        } @else {
+          <p class="tool-empty">Öffne zuerst einen Pull Request.</p>
+        }
+      </div>
+    </aside>
+    <div class="splitter" (pointerdown)="startDrag($event)" (pointermove)="drag($event)" (pointerup)="endDrag()"></div>
+  }
+
+  <main class="editor">
+    @if (content(); as c) {
+      <div class="crumbs">
+        <span>{{ b!.pr.owner }}/{{ b!.pr.repo }}#{{ b!.pr.number }}</span>
+        @for (crumb of c.crumbs; track $index) {
+          <app-icon name="chevronRight" [size]="11" />
+          <span>{{ crumb }}</span>
+        }
+      </div>
+      <div class="editor-scroll">
+        @switch (c.kind) {
+          @case ('overview') {
+            <app-overview />
+          }
+          @case ('flow') {
+            @if (flow(); as f) {
+              <app-flow-view [flow]="f" />
+            }
+          }
+          @default {
+            <app-group-view [title]="c.title!" [description]="c.description ?? null" [icon]="c.icon ?? 'code'"
+                            [segmentIds]="c.segmentIds!" [scope]="c.scope!" />
+          }
+        }
+      </div>
+    } @else {
+      <div class="welcome">
+        <div class="mark">SC</div>
+        <h1>SmartCodeReview</h1>
+        <p>Reviews nach Bedeutung statt nach Dateien: zuerst die Quick wins abhaken, dann die Datenflüsse am Stück lesen.</p>
+        @if (store.loading(); as l) {
+          <p class="loading"><span class="spinner"></span> {{ l }}</p>
+        } @else {
+          <p class="hint">Wähle links einen Pull Request · <kbd>Alt</kbd>+<kbd>1</kbd> Pull Requests · <kbd>Alt</kbd>+<kbd>2</kbd> Review</p>
+        }
+      </div>
+    }
+    @if (b && store.loading(); as l) {
+      <div class="overlay"><span class="spinner"></span> {{ l }}</div>
+    }
+  </main>
+</div>
+
+<footer class="status">
+  @if (b) {
+    <span title="Lokale Daten (für Agenten lesbar)"><app-icon name="data" [size]="12" /> {{ b.dataPath }}</span>
+    <span>Snapshot {{ b.pr.headSha.substring(0, 7) }}</span>
+    <span class="spacer"></span>
+    @let t = store.totalProgress();
+    <span class="prog"><span class="bar"><span [style.width.%]="t.total ? (t.ok / t.total) * 100 : 0"></span></span>
+      {{ t.ok }}/{{ t.total }} Zeilen ok</span>
+  } @else {
+    <span>{{ store.me()?.dataDir ?? '' }}</span>
+    <span class="spacer"></span>
+  }
+  <span>{{ store.me()?.user?.login ?? 'nicht verbunden' }} · GitHub</span>
+</footer>
+
+@if (store.error(); as e) {
+  <div class="error" role="alert">
+    <span>{{ e }}</span>
+    <button type="button" (click)="store.error.set(null)"><app-icon name="close" [size]="12" /></button>
+  </div>
+}
+@if (store.toast(); as t) {
+  <div class="toast"><app-icon name="check" [size]="14" /> {{ t }}</div>
+}

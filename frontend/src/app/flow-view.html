@@ -1,0 +1,65 @@
+@let d = diagram();
+<div class="view-head">
+  <app-icon name="flow" [size]="18" />
+  <div class="titles">
+    <h1>{{ flow().title }}</h1>
+    <p>{{ flow().steps.length }} Schritte · Aufrufreihenfolge vom Einstiegspunkt aus. Klick auf einen Knoten springt zum Code.</p>
+  </div>
+  <span class="spacer"></span>
+  <span class="progress-text">{{ progress().ok }}/{{ progress().total }} Zeilen ok</span>
+  <button type="button" class="btn" [class.success]="progress().total > 0 && progress().ok === progress().total" (click)="markFlow()">
+    <app-icon name="check" [size]="14" /> Ganzen Flow als ok markieren
+  </button>
+</div>
+
+<div class="diagram" role="list">
+  <svg [attr.width]="d.width" [attr.height]="d.height" class="edges">
+    <defs>
+      <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L8 4 L0 8 z" fill="currentColor" />
+      </marker>
+    </defs>
+    @for (e of d.edges; track $index) {
+      <path [attr.d]="e.d" class="edge" [class.hot]="hovered() === e.from || hovered() === e.to" [class.back]="e.back" marker-end="url(#arrow)" />
+    }
+  </svg>
+  @for (n of nodes(); track n.step.segmentId; let i = $index) {
+    @let p = nodeProgress(n.step.segmentId);
+    <button type="button" class="node" role="listitem"
+            [style.left.px]="n.x" [style.top.px]="n.y" [style.width.px]="d.nodeW" [style.height.px]="d.nodeH"
+            [class.done]="p.total > 0 && p.ok === p.total" [class.quick]="n.segment.category === 'quick-wins'"
+            (mouseenter)="hovered.set(n.step.segmentId)" (mouseleave)="hovered.set(null)" (click)="scrollTo(n.step.segmentId)">
+      <span class="no">{{ i + 1 }}</span>
+      <span class="txt">
+        <span class="name"><app-symbol-badge [kind]="n.segment.symbolKind" /> {{ nodeName(n.segment) }}</span>
+        <span class="file">{{ nodeHint(n.segment) }}</span>
+      </span>
+      @if (p.total > 0 && p.ok === p.total) {
+        <app-icon name="check" [size]="14" class="ok" />
+      } @else {
+        <span class="cnt">{{ p.ok }}/{{ p.total }}</span>
+      }
+    </button>
+  }
+</div>
+
+<div class="cards" #cards>
+  <svg class="rails" [attr.height]="railHeight()" aria-hidden="true">
+    @for (c of connectors(); track $index) {
+      <path [attr.d]="c.d" class="rail" [class.hot]="hovered() === c.from || hovered() === c.to" />
+    }
+  </svg>
+  @for (n of nodes(); track n.step.segmentId; let i = $index) {
+    <app-code-block
+      [segment]="n.segment"
+      [step]="i + 1"
+      [stepOf]="stepOf()"
+      [calledBy]="calledBy(n)"
+      [style.margin-left.px]="32 + n.step.depth * indent"
+      (mouseenter)="hovered.set(n.step.segmentId)"
+      (mouseleave)="hovered.set(null)"
+      (refClick)="scrollTo($event)"
+      (calledByClick)="scrollToParent(n)"
+    />
+  }
+</div>

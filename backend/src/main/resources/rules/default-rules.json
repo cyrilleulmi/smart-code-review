@@ -1,0 +1,142 @@
+{
+  "$comment": "SmartCodeReview classification rules. Copy to <dataDir>/rules.json to customise; the app re-analyses when the file changes. Rules are evaluated top to bottom, the first match wins. 'paths' rules classify whole files; 'kinds' rules classify segments by symbol kind (class, interface, type, enum, function, method, component, const); 'lines' rules classify one segment (a changed function, type, hunk, ...) when ALL its changed lines match one of 'lines' (blank lines, braces and comments are always allowed) and, if given, at least one line matches 'require'. 'symbol' optionally restricts the name of the enclosing function/class.",
+  "categories": [
+    { "id": "quick-wins", "label": "Quick wins", "icon": "bolt", "description": "Höchstwahrscheinlich irrelevante oder rein mechanische Änderungen: generierter Code, Übersetzungen, DTOs, Mapper, banale REST-Aufrufe, Imports. Schnell überfliegen und abhaken." },
+    { "id": "flows", "label": "Datenflüsse", "icon": "flow", "description": "Geänderte Funktionen, die sich gegenseitig aufrufen – in Aufrufreihenfolge, damit man den Fluss am Stück nachvollziehen kann." },
+    { "id": "logic", "label": "Einzelne Änderungen", "icon": "code", "description": "Geänderte Logik ohne erkennbaren Aufrufzusammenhang zu anderen Änderungen." },
+    { "id": "tests", "label": "Tests", "icon": "test", "description": "Test-Code." },
+    { "id": "styles", "label": "Styles & Assets", "icon": "palette", "description": "CSS, Bilder, Icons und andere Assets." }
+  ],
+  "rules": [
+    {
+      "id": "generated", "category": "quick-wins", "group": "Generiert & Lockfiles",
+      "reason": "Generierte Datei oder Lockfile",
+      "paths": ["**/package-lock.json", "**/yarn.lock", "**/pnpm-lock.yaml", "**/bun.lockb", "**/*.lock", "**/*.generated.*", "**/generated/**", "**/*-types.ts", "**/importMap.js", "**/importMap.ts", "**/*.min.js", "**/*.snap", "**/migrations/*.json"]
+    },
+    {
+      "id": "translations", "category": "quick-wins", "group": "Übersetzungen",
+      "reason": "Übersetzungsdatei",
+      "paths": ["**/i18n/**", "**/locales/**", "**/locale/**", "**/lang/**", "**/translations/**", "**/*.po", "**/*.pot", "**/*.xlf", "**/*.xliff", "**/messages*.properties", "**/*.arb", "**/translations.*", "**/messages.*"]
+    },
+    {
+      "id": "tests", "category": "tests", "group": "Tests",
+      "reason": "Test-Datei",
+      "paths": ["**/*.spec.*", "**/*.test.*", "**/__tests__/**", "**/test/**", "**/tests/**", "**/e2e/**", "**/*Test.java", "**/*IT.java"]
+    },
+    {
+      "id": "styles", "category": "styles", "group": "Styles & Assets",
+      "reason": "Style- oder Asset-Datei",
+      "paths": ["**/*.css", "**/*.scss", "**/*.sass", "**/*.less", "**/*.svg", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.ico", "**/*.woff", "**/*.woff2"]
+    },
+    {
+      "id": "docs", "category": "quick-wins", "group": "Dokumentation",
+      "reason": "Dokumentation",
+      "paths": ["**/*.md", "**/*.mdx", "**/*.txt", "**/*.adoc", "**/LICENSE*", "**/CHANGELOG*"]
+    },
+    {
+      "id": "build-config", "category": "quick-wins", "group": "Konfiguration & Build",
+      "reason": "Build-/Projekt-Konfiguration",
+      "paths": ["**/package.json", "**/tsconfig*.json", "**/.github/**", "**/.gitignore", "**/.dockerignore", "**/.env*", "**/*.yml", "**/*.yaml", "**/*.toml", "**/.editorconfig", "**/.prettierrc*", "**/.eslintrc*", "**/eslint.config.*", "**/angular.json", "**/pom.xml", "**/build.gradle*", "**/application*.properties", "**/Dockerfile*", "**/docker-compose*"]
+    },
+    {
+      "id": "dto-files", "category": "quick-wins", "group": "DTOs & Typen",
+      "reason": "DTO-/Modell-Datei (Name)",
+      "paths": ["**/*Dto.*", "**/*DTO.*", "**/*.dto.*", "**/dto/**", "**/dtos/**", "**/*.model.ts", "**/models/**", "**/*.d.ts", "**/types.ts", "**/types/**", "**/*.types.ts", "**/*Request.java", "**/*Response.java"]
+    },
+    {
+      "id": "mapper-files", "category": "quick-wins", "group": "Mapper",
+      "reason": "Mapper-Datei (Name)",
+      "paths": ["**/*Mapper.*", "**/*mapper*.*", "**/*Converter.*", "**/*.mapper.ts", "**/mappers/**"]
+    },
+    {
+      "id": "type-symbols", "category": "quick-wins", "group": "DTOs & Typen",
+      "reason": "Reine Typdeklaration (interface / type / enum)",
+      "kinds": ["interface", "type", "enum"]
+    },
+    {
+      "id": "imports", "category": "quick-wins", "group": "Imports & Formatierung",
+      "reason": "Nur Imports/Exports geändert",
+      "lines": [
+        "^\\s*import\\b.*$",
+        "^\\s*export\\s+(\\*|\\{[^}]*\\}|type\\s+\\{[^}]*\\})\\s+from\\s+.*$",
+        "^\\s*[\\w$]+(\\s+as\\s+[\\w$]+)?,?\\s*$",
+        "^\\s*(type\\s+)?[\\w$]+(\\s+as\\s+[\\w$]+)?\\s*,\\s*$",
+        "^\\s*\\}\\s*from\\s+['\"].*$",
+        "^\\s*package\\s+[\\w.]+;\\s*$"
+      ],
+      "require": ["\\bimport\\b|\\bfrom\\s+['\"]|^\\s*package\\s"]
+    },
+    {
+      "id": "formatting", "category": "quick-wins", "group": "Imports & Formatierung",
+      "reason": "Nur Formatierung / verschobene Zeilen (gleicher Inhalt)",
+      "special": "same-content"
+    },
+    {
+      "id": "mapper-code", "category": "quick-wins", "group": "Mapper",
+      "reason": "Reine Feldzuweisungen in einer Mapping-Funktion",
+      "symbol": "(?i)(map|mapper|convert|transform|^to[A-Z_]|^from[A-Z_]|serializ|deserializ|adapt)",
+      "lines": [
+        "^\\s*[\\w$'\"]+\\??\\s*:\\s*[\\w$.?!\\[\\]'\"()`${}]+\\s*(\\?\\?\\s*[^,;]+)?,?\\s*$",
+        "^\\s*\\.?set[A-Z]\\w*\\([\\w$.()]*\\);?\\s*$",
+        "^\\s*\\.[\\w$]+\\([\\w$.()]*\\)\\s*$",
+        "^\\s*[\\w$.]+\\s*=\\s*[\\w$.?!()]+;?\\s*$",
+        "^\\s*(return\\s+)?(new\\s+[\\w$.<>]+\\(|\\{|\\[)\\s*$",
+        "^\\s*\\.\\.\\.[\\w$.]+,?\\s*$",
+        "^\\s*(public|private|protected|static|export|async|function|const|\\s)*[\\w$<>\\[\\]., ]*\\b[\\w$]+\\s*\\([^)]*\\)\\s*(:\\s*[^{]+)?(=>)?\\s*[{(]?\\s*$",
+        "^\\s*\\)\\s*;?\\s*$"
+      ]
+    },
+    {
+      "id": "rest-trivial", "category": "quick-wins", "group": "Banale REST-Aufrufe",
+      "reason": "Einfacher REST-Aufruf / Durchreichen ohne eigene Logik",
+      "lines": [
+        "^\\s*(return\\s+)?(await\\s+)?(this\\.)?(http|httpClient|client|api|apiClient|axios|\\$http|ky)\\.(get|post|put|patch|delete|head|request)\\b.*$",
+        "^\\s*(const|let|var)?\\s*[\\w$]*\\s*=?\\s*(return\\s+)?(await\\s+)?(fetch|\\$fetch|axios)\\(.*$",
+        "^\\s*(return\\s+)?(await\\s+)?(res|response|r)\\.(json|text)\\(\\).*$",
+        "^\\s*if\\s*\\(\\s*!\\s*(res|response|r)\\.ok\\s*\\).*$",
+        "^\\s*throw\\s+new\\s+\\w*Error\\(.*\\);?\\s*$",
+        "^\\s*(method|headers|body|credentials|params|cache|next)\\s*:.*$",
+        "^\\s*['\"][\\w-]+['\"]\\s*:\\s*['\"][^'\"]*['\"],?\\s*$",
+        "^\\s*`[^`]*`,?\\s*$",
+        "^\\s*\\.pipe\\(.*$",
+        "^\\s*(map|catchError|tap)\\(.*$",
+        "^\\s*@(Get|Post|Put|Patch|Delete|Request)Mapping\\b.*$",
+        "^\\s*@(GET|POST|PUT|PATCH|DELETE|Path|Produces|Consumes)\\b.*$",
+        "^\\s*return\\s+(this\\.)?[\\w$]+\\.[\\w$]+\\([^()]*\\)\\s*;?\\s*$",
+        "^\\s*(public|private|protected|static|export|async|function|const|\\s)*[\\w$<>\\[\\]., ]*\\b[\\w$]+\\s*(<[^>]*>)?\\([^)]*\\)\\s*(:\\s*[^{]+)?(=>)?\\s*\\{?\\s*$"
+      ],
+      "require": ["(this\\.)?(http|httpClient|client|api|apiClient|axios|\\$http|ky)\\.(get|post|put|patch|delete|head|request)\\b|\\bfetch\\(|\\$fetch\\(|@(Get|Post|Put|Patch|Delete)Mapping|@(GET|POST|PUT|PATCH|DELETE)\\b"]
+    },
+    {
+      "id": "type-declarations", "category": "quick-wins", "group": "DTOs & Typen",
+      "reason": "Nur Typ-/Felddeklarationen",
+      "lines": [
+        "^\\s*(export\\s+)?(declare\\s+)?(interface|type|enum)\\s+[\\w$]+.*$",
+        "^\\s*(readonly\\s+)?['\"]?[\\w$-]+['\"]?\\??\\s*:\\s*[^=()]+[;,]?\\s*$",
+        "^\\s*\\|\\s*.*$",
+        "^\\s*[A-Z][A-Z0-9_]*\\s*(=\\s*[^,]+)?,?\\s*$",
+        "^\\s*(@\\w+(\\([^)]*\\))?\\s*)*(private|public|protected)?\\s*(final\\s+)?[\\w$<>\\[\\],?. ]+\\s+[\\w$]+\\s*;\\s*$",
+        "^\\s*(public\\s+)?(record|class)\\s+[\\w$]+.*$",
+        "^\\s*@\\w+(\\([^)]*\\))?\\s*$"
+      ],
+      "require": ["\\S"]
+    },
+    {
+      "id": "declarative-config", "category": "quick-wins", "group": "Deklarative Felder & Konfiguration",
+      "reason": "Nur literale Werte (Felddefinitionen, Labels, Optionen)",
+      "lines": [
+        "^\\s*\\{?\\s*(['\"]?[\\w$-]+['\"]?\\s*:\\s*('[^']*'|\"[^\"]*\"|`[^`$]*`|-?\\d+(\\.\\d+)?|true|false|null|undefined)\\s*,?\\s*)+\\}?\\s*,?\\s*$",
+        "^\\s*['\"]?[\\w$-]+['\"]?\\s*:\\s*[\\{\\[]\\s*$",
+        "^\\s*('[^']*'|\"[^\"]*\"|-?\\d+)\\s*,?\\s*$",
+        "^\\s*[\\}\\]]\\s*,?\\s*$"
+      ],
+      "require": [":\\s*('|\"|`|-?\\d|true|false)"]
+    },
+    {
+      "id": "logging", "category": "quick-wins", "group": "Logging",
+      "reason": "Nur Logging-Ausgaben",
+      "lines": ["^\\s*(console\\.(log|debug|info|warn|error)|(this\\.)?(log|logger|LOG|Log)\\.(trace|debug|info|warn|warning|error))\\(.*$"],
+      "require": ["\\S"]
+    }
+  ]
+}

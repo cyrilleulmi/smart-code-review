@@ -1,0 +1,180 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+
+  button {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 26px;
+    padding: 0 9px;
+    border: 0;
+    border-radius: 5px;
+    background: none;
+    color: var(--fg-muted);
+    font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--bg-hover);
+      color: var(--fg);
+    }
+
+    &.active {
+      background: var(--bg-selected-soft);
+      color: var(--fg);
+    }
+  }
+
+  .badge {
+    padding: 0 5px;
+    border-radius: 8px;
+    background: var(--bg-hover);
+    font-size: 10.5px;
+    color: var(--fg-muted);
+  }
+}
+
+.tree {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 0 16px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding-right: 8px;
+  margin: 0 6px;
+  border-radius: 5px;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--fg);
+
+  &:hover {
+    background: var(--bg-hover);
+  }
+
+  &:hover .mark {
+    opacity: 1;
+  }
+
+  &.selected {
+    background: var(--bg-selected);
+  }
+
+  &.d0 .label {
+    font-weight: 500;
+  }
+
+  &.done .label {
+    color: var(--fg-muted);
+  }
+}
+
+.chev {
+  width: 14px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--fg-muted);
+  flex: none;
+}
+
+.ico {
+  color: var(--fg-muted);
+}
+
+.cat-quick-wins .ico {
+  color: #e0b46d;
+}
+
+.cat-flows .ico {
+  color: #7da5f8;
+}
+
+.cat-logic .ico,
+.cat-tests .ico {
+  color: #c793e0;
+}
+
+.cat-styles .ico {
+  color: #79c27e;
+}
+
+.st-added .label {
+  color: var(--file-added);
+}
+
+.st-modified .label,
+.st-renamed .label,
+.st-changed .label {
+  color: var(--file-modified);
+}
+
+.st-removed .label {
+  color: var(--fg-dim);
+  text-decoration: line-through;
+}
+
+.label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.hint {
+  color: var(--fg-dim);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1000;
+  min-width: 0;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.cnt {
+  font-size: 11px;
+  color: var(--fg-dim);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.okicon {
+  color: var(--ok);
+}
+
+.mark {
+  opacity: 0;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg-editor);
+  color: var(--ok);
+  cursor: pointer;
+  flex: none;
+
+  &:hover {
+    background: var(--ok);
+    color: #10210f;
+  }
+}
