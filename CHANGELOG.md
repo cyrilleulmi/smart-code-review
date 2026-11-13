@@ -6,6 +6,8 @@ Docker-Images: `culmi/smart-code-review:<version>` und `:latest` (= letztes Rele
 
 ## [Unreleased]
 
+## [0.4.0] – 2026-11-13
+
 ### Neu
 - **Ports & Adapters:** Das Repository wird anhand seiner Ordner (`domain`, `application`, `port`, `usecase`, `adapter`, `infrastructure` …) geprüft. Ist es so aufgebaut, bekommt jede Klasse eine Schicht und es gibt die Kategorien *Domäne*, *Use Cases*, *Application Layer* und *Adapter* (eingehend / ausgehend).
 - **Frontend-Kategorien:** Routing & Navigation, Zustand & Stores, API-Anbindung, Formulare & Validierung, Komponenten-Logik, Templates & Markup (Regeln in `rules.json` → `aspects`).
@@ -48,7 +50,8 @@ Docker-Images: `culmi/smart-code-review:<version>` und `:latest` (= letztes Rele
 ### Neu
 - Erster PoC: offene GitHub-PRs (eigene und Review-Anfragen), Zerlegung in Segmente, Quick wins per Regeln (ohne KI), Datenflüsse in Aufrufreihenfolge mit Diagramm, zeilenweises «ok» lokal in JSON-Dateien für Agenten, Inline-Kommentare werden sofort veröffentlicht, IntelliJ-artiges UI.
 
-[Unreleased]: https://github.com/cyrilleulmi/smart-code-review/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/cyrilleulmi/smart-code-review/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/cyrilleulmi/smart-code-review/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/cyrilleulmi/smart-code-review/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/cyrilleulmi/smart-code-review/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/cyrilleulmi/smart-code-review/releases/tag/v0.1.0
