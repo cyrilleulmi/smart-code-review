@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.smartcodereview.analysis.Languages;
+import dev.smartcodereview.analysis.OpenApi;
 import dev.smartcodereview.diff.PatchParser;
 import dev.smartcodereview.model.Model;
 import dev.smartcodereview.model.Model.Comment;
@@ -155,12 +156,16 @@ public class GitHubProvider implements ReviewProvider {
     public Model.RepoStructure directories(PrRef ref, String sha) {
         JsonNode tree = getJson("/repos/" + ref.owner() + "/" + ref.repo() + "/git/trees/" + sha + "?recursive=1");
         List<String> dirs = new ArrayList<>();
+        List<String> contracts = new ArrayList<>();
         tree.path("tree").forEach(n -> {
+            String path = n.path("path").asText();
             if ("tree".equals(n.path("type").asText())) {
-                dirs.add(n.path("path").asText());
+                dirs.add(path);
+            } else if ("blob".equals(n.path("type").asText()) && OpenApi.isContract(path)) {
+                contracts.add(path);
             }
         });
-        return new Model.RepoStructure(dirs, tree.path("truncated").asBoolean(false));
+        return new Model.RepoStructure(dirs, tree.path("truncated").asBoolean(false), contracts, null);
     }
 
     @Override

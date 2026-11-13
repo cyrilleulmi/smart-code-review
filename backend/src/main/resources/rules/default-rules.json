@@ -1,12 +1,18 @@
 {
-  "$comment": "SmartCodeReview classification rules. Copy to <dataDir>/rules.json to customise; the app re-analyses when the file changes. Rules are evaluated top to bottom, the first match wins. 'paths' rules classify whole files; 'kinds' rules classify segments by symbol kind (class, interface, type, enum, function, method, component, const); 'lines' rules classify one segment (a changed function, type, hunk, ...) when ALL its changed lines match one of 'lines' (blank lines, braces and comments are always allowed) and, if given, at least one line matches 'require'. 'symbol' optionally restricts the name of the enclosing function/class. 'symbols': true keeps splitting matched files into functions/test cases (used for tests, so they can be linked to the code they exercise). 'extras': false keeps segments of a rule out of the architecture and frontend categories. Categories 'domain', 'usecases', 'application', 'adapters' are filled automatically when the repository uses ports & adapters; the frontend categories are filled by 'aspects' (first match wins; 'paths', 'kinds', 'symbol', 'text' = pattern in the segment's code, 'fileText' = pattern anywhere in the file, 'special': 'markup'). Every category is a place of its own and needs its own ok; categories can be switched off in the UI.",
+  "$comment": "SmartCodeReview classification rules. Copy to <dataDir>/rules.json to customise; the app re-analyses when the file changes. Rules are evaluated top to bottom, the first match wins. 'paths' rules classify whole files; 'kinds' rules classify segments by symbol kind (class, interface, type, enum, function, method, component, const); 'lines' rules classify one segment (a changed function, type, hunk, ...) when ALL its changed lines match one of 'lines' (blank lines, braces and comments are always allowed) and, if given, at least one line matches 'require'. 'symbol' optionally restricts the name of the enclosing function/class. 'symbols': true keeps splitting matched files into functions/test cases (used for tests, so they can be linked to the code they exercise). 'extras': false keeps segments of a rule out of the architecture and frontend categories. 'lines' rules may also require 'text' (pattern in the segment's code) or 'fileText' (pattern anywhere in the file), e.g. JPA entities. Categories 'domain', 'usecases', 'application', 'adapters' are filled automatically when the repository uses ports & adapters or a layered split with adapter packages; the frontend categories are filled by 'aspects' (first match wins; 'paths', 'kinds', 'symbol', 'text' = pattern in the segment's code, 'fileText' = pattern anywhere in the file, 'special': 'markup'). 'concerns' add cross-cutting categories (security, messaging, transactions, persistence) to frontend and backend segments: every matching concern counts, 'scope' 'frontend'/'backend' restricts a concern to one side. API contracts (openapi*.yaml) are read from the repository: generated clients and server interfaces are linked by operationId. Every category is a place of its own and needs its own ok; categories can be switched off in the UI.",
   "categories": [
     { "id": "quick-wins", "label": "Quick wins", "icon": "bolt", "description": "Höchstwahrscheinlich irrelevante oder rein mechanische Änderungen: generierter Code, Übersetzungen, DTOs, Mapper, banale REST-Aufrufe, Imports. Schnell überfliegen und abhaken." },
-    { "id": "flows", "label": "Datenflüsse", "icon": "flow", "description": "Geänderte Funktionen, die sich gegenseitig aufrufen – in Aufrufreihenfolge, damit man den Fluss am Stück nachvollziehen kann." },
-    { "id": "domain", "label": "Domäne", "icon": "hexagon", "description": "Ports & Adapters: fachliche Kernmodelle und Regeln. Sollten keine Technik (HTTP, Datenbank, Frameworks) kennen." },
+    { "id": "flows", "label": "Datenflüsse", "icon": "flow", "description": "Geänderte Funktionen, die sich gegenseitig aufrufen – in Aufrufreihenfolge, damit man den Fluss am Stück nachvollziehen kann. Auch über REST (literale URLs oder generierte OpenAPI-Clients) und ab Message-Listenern." },
+    { "id": "api-contract", "label": "API-Verträge", "icon": "contract", "description": "OpenAPI-, Proto- und GraphQL-Verträge: Änderungen betreffen Client und Server gleichzeitig – die Sprünge führen zu den geänderten Aufrufern und Implementierungen der Operation." },
+    { "id": "domain", "label": "Domäne", "icon": "hexagon", "description": "Architektur: fachliche Kernmodelle, Regeln, Entities (bei Schichten-Architektur auch Repository-Interfaces)." },
     { "id": "usecases", "label": "Use Cases", "icon": "target", "description": "Ports & Adapters: Anwendungsfälle, die die Domäne für einen konkreten Ablauf orchestrieren." },
-    { "id": "application", "label": "Application Layer", "icon": "layers", "description": "Ports & Adapters: Application Services und Ports – die Schnittstellen nach innen und aussen." },
-    { "id": "adapters", "label": "Adapter", "icon": "plug", "description": "Ports & Adapters: Technik an den Rändern – eingehend (REST, UI, CLI) und ausgehend (Persistenz, externe Clients)." },
+    { "id": "application", "label": "Application Layer", "icon": "layers", "description": "Architektur: Application Services und Ports – Abläufe, Transaktionsgrenzen, Aufrufe externer Systeme." },
+    { "id": "adapters", "label": "Adapter", "icon": "plug", "description": "Architektur: Technik an den Rändern – eingehend (REST, Messaging, UI), ausgehend (Persistenz, externe Clients), Mapping und Konfiguration." },
+    { "id": "security", "label": "Sicherheit & Berechtigungen", "icon": "shield", "description": "Authentisierung, Rollen, Filter, CSRF/CORS, Interceptors und Guards, Token-Weitergabe – auch in Konfigurationsdateien. Braucht einen Security-Blick, selbst wenn kein Controller geändert ist." },
+    { "id": "messaging", "label": "Messaging & Events", "icon": "mail", "description": "Listener, Topics, Bestätigung (acknowledge), Wiederholung und Dead-Letter: Parsing, Validierung, Transaktion und Acknowledge als einen Ablauf prüfen." },
+    { "id": "transactions", "label": "Transaktionen & Nebenläufigkeit", "icon": "lock", "description": "@Transactional, optimistisches Locking (@Version), Retries, Virtual Threads und parallele Schritte: Reihenfolge, Grenzen und Teilfehler prüfen." },
+    { "id": "persistence", "label": "Datenbank & Migrationen", "icon": "data", "description": "Migrationen (Liquibase/Flyway/SQL), JPA-Entities, Repositories und Queries. Migration und Entity derselben Tabelle stehen zusammen." },
+    { "id": "runtime", "label": "Konfiguration, Build & Betrieb", "icon": "cog", "description": "Profile und application.properties, Abhängigkeiten und Build, Docker, CI, Deployment und Infrastruktur – wirken zur Laufzeit, auch ohne Codeänderung." },
     { "id": "fe-routing", "label": "Frontend: Routing & Navigation", "icon": "route", "description": "Routen, Guards, Seiten-Einstiege: Wer kommt wohin, was ist geschützt?" },
     { "id": "fe-state", "label": "Frontend: Zustand & Stores", "icon": "data", "description": "Stores, Reducer, Effects, gemeinsamer Zustand: Woher kommen die Daten im UI, wer ändert sie?" },
     { "id": "fe-api", "label": "Frontend: API-Anbindung", "icon": "globe", "description": "HTTP-Aufrufe ans Backend: URL, Methode, Fehlerbehandlung, Ladezustand." },
@@ -21,7 +27,7 @@
     {
       "id": "generated", "extras": false, "category": "quick-wins", "group": "Generiert & Lockfiles",
       "reason": "Generierte Datei oder Lockfile",
-      "paths": ["**/package-lock.json", "**/yarn.lock", "**/pnpm-lock.yaml", "**/bun.lockb", "**/*.lock", "**/*.generated.*", "**/generated/**", "**/*-types.ts", "**/importMap.js", "**/importMap.ts", "**/*.min.js", "**/*.snap", "**/migrations/*.json"]
+      "paths": ["**/package-lock.json", "**/yarn.lock", "**/pnpm-lock.yaml", "**/bun.lockb", "**/*.lock", "**/*.generated.*", "**/generated/**", "**/*-types.ts", "**/importMap.js", "**/importMap.ts", "**/*.min.js", "**/*.snap", "**/migrations/*.json", "**/gen/**", "**/.openapi-generator/**", "**/dist/**", "**/node_modules/**", "**/build/generated/**", "**/target/generated-sources/**"]
     },
     {
       "id": "translations", "extras": false, "category": "quick-wins", "group": "Übersetzungen",
@@ -39,14 +45,39 @@
       "paths": ["**/*.css", "**/*.scss", "**/*.sass", "**/*.less", "**/*.svg", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.ico", "**/*.woff", "**/*.woff2"]
     },
     {
+      "id": "migrations", "extras": false, "category": "persistence", "group": "Migrationen",
+      "reason": "Datenbank-Migration",
+      "paths": ["**/db/changelog/**", "**/db/migration/**", "**/db/migrations/**", "**/liquibase/**", "**/flyway/**", "**/changelog*.xml", "**/changelog*.yaml", "**/changelog*.yml", "**/*.sql"]
+    },
+    {
+      "id": "api-contracts", "extras": false, "category": "api-contract", "group": "API-Verträge",
+      "reason": "Schnittstellen-Vertrag (Client und Server werden daraus generiert)",
+      "paths": ["**/openapi*.yaml", "**/openapi*.yml", "**/openapi*.json", "**/*.openapi.yaml", "**/*.openapi.yml", "**/*.openapi.json", "**/swagger*.yaml", "**/swagger*.yml", "**/swagger*.json", "**/*.proto", "**/*.graphql", "**/*.graphqls"]
+    },
+    {
+      "id": "runtime-config", "category": "runtime", "group": "Laufzeit-Konfiguration & Profile",
+      "reason": "Konfiguration, die zur Laufzeit wirkt (Profile, Datenbank, Listener, Security)",
+      "paths": ["**/application*.properties", "**/application*.yml", "**/application*.yaml", "**/bootstrap*.yml", "**/bootstrap*.yaml", "**/logback*.xml", "**/log4j2*.xml", "**/proxy.conf.json", "**/proxy.conf.js"]
+    },
+    {
+      "id": "deployment", "category": "runtime", "group": "Deployment, CI & Infrastruktur",
+      "reason": "Container, Pipeline, Deployment oder Infrastruktur",
+      "paths": ["**/Dockerfile*", "**/docker-compose*", "**/Jenkinsfile*", "**/.gitlab-ci.yml", "**/.github/workflows/**", "**/deploy/**", "**/helm/**", "**/charts/**", "**/k8s/**", "**/kubernetes/**", "**/terraform/**", "**/*.tf", "**/*.tfvars", "**/argocd/**", "**/sonar-project.properties"]
+    },
+    {
+      "id": "build-dependencies", "category": "runtime", "group": "Build & Abhängigkeiten",
+      "reason": "Abhängigkeiten oder Build-Schritte (Versionen, Code-Generierung, Plugins)",
+      "paths": ["**/package.json", "**/pom.xml", "**/build.gradle*", "**/settings.gradle*", "**/gradle.properties", "**/libs.versions.toml", "**/gradle/wrapper/**", "**/angular.json", "**/go.mod", "**/pyproject.toml", "**/requirements*.txt", "**/Cargo.toml"]
+    },
+    {
       "id": "docs", "extras": false, "category": "quick-wins", "group": "Dokumentation",
       "reason": "Dokumentation",
       "paths": ["**/*.md", "**/*.mdx", "**/*.txt", "**/*.adoc", "**/LICENSE*", "**/CHANGELOG*"]
     },
     {
-      "id": "build-config", "extras": false, "category": "quick-wins", "group": "Konfiguration & Build",
-      "reason": "Build-/Projekt-Konfiguration",
-      "paths": ["**/package.json", "**/tsconfig*.json", "**/.github/**", "**/.gitignore", "**/.dockerignore", "**/.env*", "**/*.yml", "**/*.yaml", "**/*.toml", "**/.editorconfig", "**/.prettierrc*", "**/.eslintrc*", "**/eslint.config.*", "**/angular.json", "**/pom.xml", "**/build.gradle*", "**/application*.properties", "**/Dockerfile*", "**/docker-compose*"]
+      "id": "build-config", "extras": false, "category": "quick-wins", "group": "Werkzeug-Konfiguration",
+      "reason": "Werkzeug-/Projekt-Konfiguration (Compiler, Linter, Editor)",
+      "paths": ["**/tsconfig*.json", "**/.github/**", "**/.gitignore", "**/.dockerignore", "**/.env*", "**/*.yml", "**/*.yaml", "**/*.toml", "**/.editorconfig", "**/.prettierrc*", "**/.eslintrc*", "**/eslint.config.*", "**/jest.config.*", "**/.npmrc", "**/.nvmrc"]
     },
     {
       "id": "dto-files", "category": "quick-wins", "group": "DTOs & Typen",
@@ -57,11 +88,6 @@
       "id": "mapper-files", "category": "quick-wins", "group": "Mapper",
       "reason": "Mapper-Datei (Name)",
       "paths": ["**/*Mapper.*", "**/*mapper*.*", "**/*Converter.*", "**/*.mapper.ts", "**/mappers/**"]
-    },
-    {
-      "id": "type-symbols", "category": "quick-wins", "group": "DTOs & Typen",
-      "reason": "Reine Typdeklaration (interface / type / enum)",
-      "kinds": ["interface", "type", "enum"]
     },
     {
       "id": "imports", "extras": false, "category": "quick-wins", "group": "Imports & Formatierung",
@@ -80,6 +106,21 @@
       "id": "formatting", "extras": false, "category": "quick-wins", "group": "Imports & Formatierung",
       "reason": "Nur Formatierung / verschobene Zeilen (gleicher Inhalt)",
       "special": "same-content"
+    },
+    {
+      "id": "jpa-repositories", "category": "persistence", "group": "Repositories & Queries",
+      "reason": "Repository-Interface / Query",
+      "fileText": ["\\binterface\\s+\\w+(<[^>]*>)?\\s+extends\\s+[^{]*Repository\\b|@Query\\s*\\("]
+    },
+    {
+      "id": "jpa-entities", "category": "persistence", "group": "Entitäten (JPA)",
+      "reason": "JPA-Entity (Tabellenstruktur)",
+      "fileText": ["@Entity\\b|@Embeddable\\b|@MappedSuperclass\\b"]
+    },
+    {
+      "id": "type-symbols", "category": "quick-wins", "group": "DTOs & Typen",
+      "reason": "Reine Typdeklaration (interface / type / enum)",
+      "kinds": ["interface", "type", "enum"]
     },
     {
       "id": "mapper-code", "category": "quick-wins", "group": "Mapper",
@@ -168,7 +209,7 @@
     },
     {
       "id": "fe-api-code", "category": "fe-api", "reason": "HTTP-Aufruf ans Backend",
-      "text": ["\\b(http|httpClient|axios|api|apiClient)\\s*\\.\\s*(get|post|put|patch|delete)\\b|\\bfetch\\(|\\$fetch\\(|\\buseQuery\\(|\\buseMutation\\(|\\bHttpClient\\b"]
+      "text": ["\\b(http|httpClient|axios|api|apiClient)\\s*\\.\\s*(get|post|put|patch|delete)\\b|\\bfetch\\(|\\$fetch\\(|\\buseQuery\\(|\\buseMutation\\(|\\bHttpClient\\b|\\bhttpResource\\b|\\brxResource\\("]
     },
     {
       "id": "fe-forms-code", "category": "fe-forms", "reason": "Formular / Validierung",
@@ -190,5 +231,16 @@
       "id": "fe-components-code", "category": "fe-components", "reason": "Komponente",
       "fileText": ["@Component\\s*\\(|\\bdefineComponent\\(|from\\s+['\"]react['\"]"]
     }
+  ],
+  "concerns": [
+    {"id": "security-code", "category": "security", "reason": "Sicherheitsrelevanter Code", "text": ["@PreAuthorize|@PostAuthorize|@Secured|@RolesAllowed|@PermitAll|@DenyAll|@EnableWebSecurity|@EnableMethodSecurity|SecurityFilterChain|HttpSecurity|\\.csrf\\(|\\.cors\\(|CorsConfiguration|OncePerRequestFilter|GenericFilterBean|AuthenticationManager|JwtDecoder|JwtAuthenticationConverter|oauth2ResourceServer|\\bhasRole\\(|\\bhasAnyRole\\(|\\bhasAuthority\\(|SecurityContextHolder|HttpInterceptorFn|\\bHttpInterceptor\\b|withCredentials|XSRF|Xsrf|CanActivateFn|\\bcanActivate\\b|Content-Security-Policy|\\bAuthorization\\b|\\bBearer\\b|\\bJwt\\w*|\\bpostMessage\\(|addEventListener\\(\\s*['\\\"]message['\\\"]"]},
+    {"id": "security-files", "category": "security", "reason": "Security-Datei", "paths": ["**/security/**", "**/auth/**", "**/*Security*.*", "**/*.interceptor.ts", "**/*.guard.ts", "**/*Filter.java", "**/*Filter.kt"]},
+    {"id": "security-config", "category": "security", "reason": "Security-Konfiguration", "paths": ["**/*.properties", "**/*.yml", "**/*.yaml"], "text": ["(?i)security|cors|csrf|jwt|oauth|issuer|actuator|management\\.endpoints|h2\\.console|content-security"]},
+    {"id": "messaging-code", "category": "messaging", "scope": "backend", "reason": "Messaging / Events", "text": ["@JmsListener|@KafkaListener|@RabbitListener|@SqsListener|@StreamListener|@Incoming|@Outgoing|JmsTemplate|KafkaTemplate|RabbitTemplate|JmsListenerContainerFactory|\\.acknowledge\\(|ServiceBus\\w*|MessageListener|jakarta\\.jms|javax\\.jms|DeadLetter|deadLetter|ConsumerRecord|ApplicationEventPublisher|@(Transactional)?EventListener"]},
+    {"id": "messaging-files", "category": "messaging", "scope": "backend", "reason": "Messaging-Adapter", "paths": ["**/messaging/**", "**/jms/**", "**/kafka/**", "**/listener/**", "**/listeners/**"]},
+    {"id": "messaging-config", "category": "messaging", "reason": "Messaging-Konfiguration", "paths": ["**/*.properties", "**/*.yml", "**/*.yaml", "**/*.tf"], "text": ["(?i)\\bjms\\b|servicebus|service-bus|service_bus|kafka|rabbit|amqp|\\btopic|subscription|dead.?letter|max_delivery_count|listener"]},
+    {"id": "transactions-code", "category": "transactions", "scope": "backend", "reason": "Transaktion / Nebenläufigkeit", "text": ["@Transactional|TransactionTemplate|PlatformTransactionManager|@Version\\b|OptimisticLock|PessimisticLock|DataIntegrityViolation|@Lock\\(|LockModeType|@Retryable|RetryTemplate|maxAttempts|newVirtualThreadPerTaskExecutor|ExecutorService|CompletableFuture|StructuredTaskScope|\\bsynchronized\\b|@Async\\b|ReentrantLock|Semaphore|ConcurrentHashMap|AtomicInteger|AtomicLong|\\.parallelStream\\(|\\bisolation\\s*=|\\bpropagation\\s*=|rollbackFor|[<>]=?\\s*\\w*(?i:retr(y|ies))\\w*|\\b\\w*(?i:retr(y|ies))\\w*\\s*(\\(|[<>]=?)"]},
+    {"id": "persistence-code", "category": "persistence", "scope": "backend", "reason": "Datenbankzugriff", "text": ["@Entity\\b|@Table\\s*\\(|@Column\\b|@JoinColumn|@JoinTable|@OneToMany|@ManyToOne|@ManyToMany|@OneToOne|@Embedded|@Enumerated|@Query\\s*\\(|@Modifying|@NamedQuery|EntityManager|\\.createQuery\\(|\\.createNativeQuery\\(|JdbcTemplate|(?i:repo(sitory)?)\\.(save|saveAll|saveAndFlush|delete\\w*|flush|persist|merge)\\w*\\("]},
+    {"id": "persistence-config", "category": "persistence", "reason": "Datenbank-Konfiguration", "paths": ["**/*.properties", "**/*.yml", "**/*.yaml"], "text": ["(?i)liquibase|flyway|datasource|ddl-auto|hibernate|\\bjpa\\b|\\bh2\\b|jdbc"]}
   ]
 }

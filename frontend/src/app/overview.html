@@ -61,6 +61,9 @@
   @if (architecture()?.style === 'hexagonal') {
     <span class="arch-badge" [title]="'Gefunden: ' + architecture()!.evidence.join(', ')"><app-icon name="hexagon" [size]="13" /> Ports &amp; Adapters erkannt</span>
     <span class="muted">Kategorien Domäne, Use Cases, Application Layer und Adapter sind aktiv.</span>
+  } @else if (architecture()?.style === 'layered') {
+    <span class="arch-badge" [title]="'Gefunden: ' + architecture()!.evidence.join(', ')"><app-icon name="layers" [size]="13" /> Schichten mit Adaptern erkannt</span>
+    <span class="muted">Domäne, Application und Adapter-Pakete ohne Ports (Onion-Stil): Aufrufe werden direkt verfolgt, nicht über Interfaces.</span>
   } @else {
     <span class="muted"><app-icon name="hexagon" [size]="13" /> Keine Ports-&amp;-Adapters-Struktur erkannt (Ordner wie <code>domain</code> + <code>adapter</code>/<code>port</code>) – keine Architektur-Kategorien.</span>
   }

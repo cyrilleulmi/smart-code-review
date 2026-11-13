@@ -6,6 +6,19 @@ Docker-Images: `culmi/smart-code-review:<version>` und `:latest` (= letztes Rele
 
 ## [Unreleased]
 
+## [0.5.0] – 2026-11-13
+
+### Neu
+- **Generierte OpenAPI-Clients:** Die OpenAPI-Verträge des Repos werden gelesen; Frontend-Aufrufe generierter Services (`playersService.updatePlayer(…)`) werden über die operationId mit dem Controller verbunden, der das generierte `…Api`-Interface implementiert (oder einem Endpunkt mit passendem Pfad). Flows laufen so auch ohne URL im Code vom Browser ins Backend.
+- **Schichten mit Adaptern (Onion-Stil):** Repos mit `domain` / `application` / `adapter` ohne Ports werden als «Schichten mit Adaptern» erkannt und bekommen die Architektur-Kategorien. Adapter werden nach Rolle gruppiert: eingehend (REST, Messaging-Listener, Fehlerbehandlung), ausgehend, Mapping, Konfiguration.
+- **Neue Kategorien:** *API-Verträge* (Sprünge zu Aufrufern und Implementierungen der geänderten Operation), *Sicherheit & Berechtigungen*, *Messaging & Events*, *Transaktionen & Nebenläufigkeit*, *Datenbank & Migrationen* (Migration und Entity derselben Tabelle in einer Gruppe, mit Verweisen), *Konfiguration, Build & Betrieb*. Querschnitts-Kategorien kommen aus der neuen Regel-Liste `concerns`.
+- **Auslöser im Flow-Titel:** `JMS-Listener: onMessage → …`, `PUT /rest/players/{}: updatePlayer → …`.
+
+### Geändert
+- Migrationen, JPA-Entities, Repositories mit Queries, `application.properties`, Dockerfile/CI/Deployment und Abhängigkeiten sind keine Quick wins mehr. Generierte Bäume (`gen/`, `dist/`, `build/generated/`) sind es neu.
+- Message-Listener in `adapter/messaging/` gelten als eingehende Adapter (vorher: ausgehend). `infra/` unter `deploy/` zählt nicht mehr als Adapter-Schicht.
+- Sprünge in Dateien ohne Symbole (YAML, SQL) werden angezeigt.
+
 ## [0.4.0] – 2026-11-13
 
 ### Neu
@@ -50,7 +63,8 @@ Docker-Images: `culmi/smart-code-review:<version>` und `:latest` (= letztes Rele
 ### Neu
 - Erster PoC: offene GitHub-PRs (eigene und Review-Anfragen), Zerlegung in Segmente, Quick wins per Regeln (ohne KI), Datenflüsse in Aufrufreihenfolge mit Diagramm, zeilenweises «ok» lokal in JSON-Dateien für Agenten, Inline-Kommentare werden sofort veröffentlicht, IntelliJ-artiges UI.
 
-[Unreleased]: https://github.com/cyrilleulmi/smart-code-review/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/cyrilleulmi/smart-code-review/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/cyrilleulmi/smart-code-review/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/cyrilleulmi/smart-code-review/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/cyrilleulmi/smart-code-review/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/cyrilleulmi/smart-code-review/compare/v0.1.0...v0.2.0

@@ -34,9 +34,13 @@ Only changed lines can be marked. Valid keys per segment: `analysis.json` → `s
    A segment at several places needs one ok per place.
 5. `tests[]` → per changed test case: `subjects` (components under test) and `covers` (reached segments,
    `direct` or `via` another segment, `line` = call site in the test). `segments[].testedBy` is the reverse.
-6. `architecture.style` = "hexagonal" when the repo uses ports & adapters; then `segments[].layer` is
-   domain | application | usecase | adapter. `segments[].frontend` marks web frontend code.
-   `flows[].edges[].kind` = "http" for REST calls from the frontend into a backend endpoint.
+6. `architecture.style` = "hexagonal" when the repo uses ports & adapters, "layered" for domain / application /
+   adapter packages without ports; then `segments[].layer` is domain | application | usecase | adapter.
+   `segments[].frontend` marks web frontend code. `flows[].edges[].kind` = "http" for REST calls from the
+   frontend into a backend endpoint (literal URLs, or generated OpenAPI clients matched by operationId; `via`
+   then ends with `(operationId)`). Flow titles start with the trigger when known (`JMS-Listener: …`, `PUT /x: …`).
+   Cross-cutting categories: `api-contract`, `security`, `messaging`, `transactions`, `persistence`, `runtime`.
+   `reviews/…/structure.json` holds the repository directories and the API contract `operations`.
 7. `components[]` / `componentEdges[]`: changed files grouped into components and the calls between them.
 
 ## Marking lines as ok

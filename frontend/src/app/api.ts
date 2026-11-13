@@ -194,7 +194,8 @@ export interface TestInfo {
 }
 
 export interface ArchitectureInfo {
-  style: 'hexagonal' | null;
+  /** hexagonal: ports & adapters; layered: domain / application / adapter packages without ports */
+  style: 'hexagonal' | 'layered' | null;
   evidence: string[];
 }
 

@@ -3,6 +3,7 @@ package dev.smartcodereview.analysis;
 import dev.smartcodereview.analysis.SymbolExtractor.Symbol;
 import dev.smartcodereview.model.Model;
 import dev.smartcodereview.model.Model.Analysis;
+import dev.smartcodereview.model.Model.ApiOperation;
 import dev.smartcodereview.model.Model.ArchitectureInfo;
 import dev.smartcodereview.model.Model.Category;
 import dev.smartcodereview.model.Model.Component;
@@ -16,6 +17,7 @@ import dev.smartcodereview.model.Model.FlowStep;
 import dev.smartcodereview.model.Model.Group;
 import dev.smartcodereview.model.Model.Hunk;
 import dev.smartcodereview.model.Model.LineRef;
+import dev.smartcodereview.model.Model.RepoStructure;
 import dev.smartcodereview.model.Model.Segment;
 import dev.smartcodereview.model.Model.Snapshot;
 import dev.smartcodereview.model.Model.TestCoverage;
@@ -72,7 +74,8 @@ public final class Analyzer {
             "submit", "validate", "transform", "convert", "item", "items", "list", "result", "options", "props", "state");
     private static final Pattern IMPORT_START = Pattern.compile("^\\s*import\\b");
     private static final Pattern MODULE_SYNTAX = Pattern.compile("^\\s*export\\b|\\brequire\\s*\\(|\\bmodule\\.exports\\b");
-    private static final Pattern ENTRY_LAYER = Pattern.compile("(?i)(component|page|route|controller|resource|endpoint|handler|view|screen|app/|pages/|api/)");
+    private static final Pattern ENTRY_LAYER = Pattern.compile(
+            "(?i)(component|page|route|controller|resource|endpoint|handler|view|screen|listener|consumer|messaging/|app/|pages/|api/)");
     private static final Pattern DEEP_LAYER = Pattern.compile("(?i)(repository|repo|dao|store|db|database|client|gateway|adapter|lib/|utils?/|helpers?/)");
     private static final Pattern API_LAYER = Pattern.compile("(?i)(resource|controller|endpoint|handler|route|/api/|/rest/|/web/)");
     private static final Pattern DOMAIN_DIR = Pattern.compile("(?i)/(domain|model|models|entity|entities)/");
@@ -81,7 +84,31 @@ public final class Analyzer {
             "application", Structure.APPLICATION, "adapters", Structure.ADAPTER);
 
     /** Bump when the analysis logic changes, so stored analyses are recomputed. */
-    public static final int VERSION = 12;
+    public static final int VERSION = 13;
+
+    /** Asynchronous / framework entry points: shown as the trigger in the title of a flow that starts there. */
+    private static final List<Map.Entry<Pattern, String>> TRIGGERS = List.of(
+            Map.entry(Pattern.compile("@JmsListener\\b"), "JMS-Listener"),
+            Map.entry(Pattern.compile("@KafkaListener\\b"), "Kafka-Listener"),
+            Map.entry(Pattern.compile("@RabbitListener\\b"), "RabbitMQ-Listener"),
+            Map.entry(Pattern.compile("@SqsListener\\b"), "SQS-Listener"),
+            Map.entry(Pattern.compile("@Incoming\\b"), "Messaging (@Incoming)"),
+            Map.entry(Pattern.compile("@(Transactional)?EventListener\\b"), "Event-Listener"),
+            Map.entry(Pattern.compile("@Scheduled\\b"), "Zeitgesteuert (@Scheduled)"));
+    /** A method call on some receiver: `this.api.updatePlayer(`, `inject(X).getPlayer(`, `api?.list(`. */
+    private static final Pattern MEMBER_CALL = Pattern.compile("(?:([\\w$]+)|[)\\]])\\s*\\??\\.\\s*([\\w$]+)\\s*(?:<[^()]*?>)?\\s*\\(");
+    /** A class that implements an interface generated from an OpenAPI contract (`implements PlayersApi`). */
+    private static final Pattern IMPLEMENTS_API = Pattern.compile("(\\bimplements\\b|\\)\\s*:|\\bclass\\s+\\w+\\s*:)[^{]*\\b\\w+Api(Delegate)?\\b");
+    /** Frontend imports that point at a generated API client (used when no contract file is known). */
+    private static final Pattern GENERATED_CLIENT_IMPORT = Pattern.compile("['\"][^'\"]*(/gen/|/generated/|openapi|/api['\"/])");
+    /** Table names in migrations: Liquibase `tableName: x` / `tableName="x"`, SQL `create/alter/... table x`. */
+    private static final List<Pattern> TABLE_IN_MIGRATION = List.of(
+            Pattern.compile("tableName['\"]?\\s*[:=]\\s*['\"]?(?:[\\w]+\\.)?([\\w]+)"),
+            Pattern.compile("(?i)\\b(?:create|alter|drop|truncate)\\s+table\\s+(?:if\\s+(?:not\\s+)?exists\\s+)?[\\[\"`]?(?:\\w+[\\]\"`]?\\.[\\[\"`]?)?(\\w+)"),
+            Pattern.compile("(?i)\\binsert\\s+into\\s+[\\[\"`]?(?:\\w+[\\]\"`]?\\.[\\[\"`]?)?(\\w+)"),
+            Pattern.compile("(?i)^\\s*update\\s+[\\[\"`]?(?:\\w+[\\]\"`]?\\.[\\[\"`]?)?(\\w+)\\s+set\\b"));
+    private static final Pattern ENTITY = Pattern.compile("@Entity\\b");
+    private static final Pattern TABLE_ANNOTATION = Pattern.compile("@Table\\s*\\([^)]*?name\\s*=\\s*\"(?:\\w+\\.)?(\\w+)\"|@Table\\s*\\(\\s*\"(\\w+)\"");
 
     private final Rules rules;
 
@@ -101,6 +128,7 @@ public final class Analyzer {
         CodeText text;
         List<Symbol> symbols;
         FileView view;
+        String source;
         String importsText;
         Set<Integer> importLines; // 0-based
         boolean module; // uses import/export/require; plain scripts share one global scope
@@ -122,6 +150,8 @@ public final class Analyzer {
         boolean frontend;
         String layer; // ports & adapters layer, null if none
         Rules.Rule aspect; // frontend aspect (extra category), null if none
+        List<String> concerns = List.of(); // cross-cutting categories (security, messaging, ...)
+        String trigger; // how a flow starting here is triggered (endpoint, JMS listener, ...), null if unknown
         final Map<Integer, List<LineRef>> refs = new HashMap<>();
 
         int sortLine() {
@@ -139,11 +169,21 @@ public final class Analyzer {
     // ------------------------------------------------------------------ analysis
 
     public Analysis analyze(Snapshot snapshot, Map<String, String> sources) {
-        return analyze(snapshot, sources, null);
+        return analyze(snapshot, sources, (RepoStructure) null);
     }
 
     /** directories: all directories of the repository (to recognise ports &amp; adapters); null = only the changed ones. */
     public Analysis analyze(Snapshot snapshot, Map<String, String> sources, Collection<String> directories) {
+        return analyze(snapshot, sources, directories == null ? null : new RepoStructure(List.copyOf(directories), false));
+    }
+
+    /**
+     * structure: directories of the repository (architecture) and the operations of its API contracts (links
+     * through generated clients); null = only what the diff shows.
+     */
+    public Analysis analyze(Snapshot snapshot, Map<String, String> sources, RepoStructure structure) {
+        Collection<String> directories = structure == null ? null : structure.directories();
+        List<ApiOperation> operations = structure == null || structure.operations() == null ? List.of() : structure.operations();
         List<Work> works = new ArrayList<>();
         for (DiffFile file : snapshot.files()) {
             segmentFile(file, sources.get(file.path()), works);
@@ -175,6 +215,10 @@ public final class Analyzer {
         for (Work w : works) {
             String source = sources.get(w.file.path());
             w.frontend = Structure.isFrontend(w.file.path(), source);
+            if (w.ctx != null && w.symbol != null && w.symbol.isCallable()) {
+                String head = String.join("\n", head(w.ctx.text.lines, w.symbol));
+                TRIGGERS.stream().filter(t -> t.getKey().matcher(head).find()).findFirst().ifPresent(t -> w.trigger = t.getValue());
+            }
             boolean extras = (w.rule == null || w.rule.extras()) && !isTest(w);
             if (!extras) {
                 continue;
@@ -186,10 +230,13 @@ public final class Analyzer {
                 w.aspect = rules.aspectFor(w.file.path(), w.symbol == null ? null : w.symbol.name(),
                         w.symbol == null ? null : w.symbol.kind(), segmentText(w), source, w.changed);
             }
+            w.concerns = rules.concernsFor(w.file.path(), w.frontend, w.symbol == null ? null : w.symbol.name(),
+                    w.symbol == null ? null : w.symbol.kind(), concernText(w), source);
         }
 
         List<FlowEdge> edges = findEdges(works);
-        edges.addAll(findHttpEdges(works));
+        edges.addAll(findHttpEdges(works, edges, operations));
+        linkMigrations(works);
         List<Flow> flows = buildFlows(works, edges);
         Set<String> inFlows = flows.stream().flatMap(f -> f.steps().stream()).map(FlowStep::segmentId).collect(Collectors.toSet());
         for (Work w : works) {
@@ -221,7 +268,7 @@ public final class Analyzer {
         for (Work w : works) {
             segments.add(toSegment(w, places.getOrDefault(w.id, List.of()), testedBy.getOrDefault(w.id, List.of())));
         }
-        ArchitectureInfo architecture = new ArchitectureInfo(evidence.isEmpty() ? null : "hexagonal", evidence);
+        ArchitectureInfo architecture = new ArchitectureInfo(Structure.styleOf(evidence), evidence);
         Map<String, String> componentOf = new HashMap<>();
         List<Component> components = components(works, !evidence.isEmpty(), componentOf);
         return new Analysis(Model.SCHEMA_VERSION, Instant.now().toString(), snapshot.pr().headSha(), fingerprint(rules),
@@ -234,6 +281,21 @@ public final class Analyzer {
             return String.join("\n", w.ctx.text.lines.subList(w.symbol.startLine() - 1, Math.min(w.symbol.endLine(), w.ctx.text.lines.size())));
         }
         return w.changed.stream().map(DiffLine::text).collect(Collectors.joining("\n"));
+    }
+
+    /**
+     * The code a concern looks at: functions as a whole (with their annotations); for classes, types and
+     * module code only the changed lines plus the declaration (a class "contains" everything).
+     */
+    private static String concernText(Work w) {
+        if (w.ctx != null && w.symbol != null && (w.symbol.isCallable() || "const".equals(w.symbol.kind()))) {
+            return segmentText(w);
+        }
+        String changed = w.changed.stream().map(DiffLine::text).collect(Collectors.joining("\n"));
+        if (w.ctx != null && w.symbol != null) {
+            return String.join("\n", head(w.ctx.text.lines, w.symbol)) + "\n" + changed;
+        }
+        return changed;
     }
 
     private static boolean isTest(Work w) {
@@ -273,6 +335,7 @@ public final class Analyzer {
 
         FileCtx ctx = new FileCtx();
         ctx.diff = file;
+        ctx.source = source;
         ctx.text = CodeText.of(source);
         ctx.symbols = SymbolExtractor.extract(ctx.text, file.path());
         ctx.view = FileView.build(ctx.text.lines, file.hunks());
@@ -390,7 +453,8 @@ public final class Analyzer {
     }
 
     private void classifyByLines(Work w) {
-        Rules.Rule r = rules.forLines(w.changed, w.symbol == null ? null : w.symbol.name(), w.symbol == null ? null : w.symbol.kind());
+        Rules.Rule r = rules.forLines(w.changed, w.symbol == null ? null : w.symbol.name(), w.symbol == null ? null : w.symbol.kind(),
+                w.ctx == null ? null : concernText(w), w.ctx == null ? null : w.ctx.source);
         if (r != null) {
             applyRule(w, r);
         }
@@ -443,13 +507,20 @@ public final class Analyzer {
     }
 
     /**
-     * REST across the stack: HTTP calls with a literal URL in one segment matched to an endpoint in another
-     * (JAX-RS/Spring annotations, Next.js route files, Express/Go route registrations).
+     * REST across the stack: HTTP calls in one segment matched to an endpoint in another. Calls: a literal URL
+     * (`http.put('/api/x')`, `fetch`) or a generated client method named like an operationId of the API contract
+     * (`this.playersService.updatePlayer(...)`). Endpoints: JAX-RS/Spring annotations, Next.js route files,
+     * Express/Go route registrations, and methods named like an operationId in a class implementing a generated
+     * `...Api` interface. Changed lines of the contract itself link to both sides.
      */
-    private List<FlowEdge> findHttpEdges(List<Work> works) {
-        record Target(Work work, Http.Endpoint endpoint) {
+    private List<FlowEdge> findHttpEdges(List<Work> works, List<FlowEdge> callEdges, List<ApiOperation> operations) {
+        record Target(Work work, Http.Endpoint endpoint, ApiOperation operation) {
         }
+        Map<String, List<ApiOperation>> byOperationId = new HashMap<>();
+        operations.forEach(o -> byOperationId.computeIfAbsent(o.operationId(), k -> new ArrayList<>()).add(o));
         List<Target> targets = new ArrayList<>();
+        // methods of classes implementing generated API interfaces, by name (works without a contract, too)
+        Map<String, List<Work>> implementations = new HashMap<>();
         for (Work b : works) {
             if (b.ctx == null || isTest(b)) {
                 continue;
@@ -461,37 +532,181 @@ public final class Analyzer {
                     e = Http.fileRoute(b.file.path(), b.symbol.name());
                 }
                 if (e != null) {
-                    targets.add(new Target(b, e));
+                    targets.add(new Target(b, e, null));
+                } else if (!b.frontend && IMPLEMENTS_API.matcher(String.join(" ", classHead(b))).find()) {
+                    implementations.computeIfAbsent(b.symbol.name(), k -> new ArrayList<>()).add(b);
+                    for (ApiOperation o : byOperationId.getOrDefault(b.symbol.name(), List.of())) {
+                        targets.add(new Target(b, new Http.Endpoint(o.method(), o.path()), o));
+                        b.trigger = b.trigger != null ? b.trigger : o.method() + " " + o.path();
+                    }
+                }
+                if (e != null && b.trigger == null) {
+                    b.trigger = e.label();
                 }
             }
             int from = b.symbol != null ? b.symbol.startLine() - 1 : b.anchors.values().stream().min(Integer::compare).orElse(1) - 1;
             int to = b.symbol != null ? b.symbol.endLine() - 1 : b.anchors.values().stream().max(Integer::compare).orElse(1) - 1;
             for (int i = Math.max(0, from); i <= Math.min(to, raw.size() - 1); i++) {
                 for (Http.Endpoint e : Http.registered(raw.get(i))) {
-                    targets.add(new Target(b, e));
+                    targets.add(new Target(b, e, null));
                 }
             }
         }
         List<FlowEdge> edges = new ArrayList<>();
-        if (targets.isEmpty()) {
-            return edges;
-        }
+        Map<ApiOperation, Set<Work>> callers = new HashMap<>();
+        Map<ApiOperation, Set<Work>> implementers = new HashMap<>();
+        targets.stream().filter(t -> t.operation() != null)
+                .forEach(t -> implementers.computeIfAbsent(t.operation(), k -> new LinkedHashSet<>()).add(t.work()));
         Set<String> seen = new HashSet<>();
+        Set<String> localCalls = callEdges.stream().map(e -> e.from() + ">" + e.via()).collect(Collectors.toSet());
         for (Work a : works) {
             if (a.ctx == null || isTest(a)) {
                 continue;
             }
-            for (Http.Call call : Http.calls(a.ctx.text.lines, searchLinesOf(a, works))) {
+            List<Integer> lines = searchLinesOf(a, works);
+            List<Http.Call> calls = new ArrayList<>(Http.calls(a.ctx.text.lines, lines));
+            Map<Http.Call, ApiOperation> viaOperation = new HashMap<>();
+            if (a.frontend) {
+                boolean generatedClient = GENERATED_CLIENT_IMPORT.matcher(a.ctx.importsText).find();
+                for (int idx : lines) {
+                    if (idx < 0 || idx >= a.ctx.text.code.size()) {
+                        continue;
+                    }
+                    Matcher m = MEMBER_CALL.matcher(a.ctx.text.code.get(idx));
+                    while (m.find()) {
+                        String name = m.group(2);
+                        if ("this".equals(m.group(1)) || localCalls.contains(a.id + ">" + name)) {
+                            continue; // own method, or a changed wrapper of the same name (that one calls the API)
+                        }
+                        for (ApiOperation o : byOperationId.getOrDefault(name, List.of())) {
+                            Http.Call call = new Http.Call(o.method(), Http.normalisePath("{}" + o.path()), idx + 1);
+                            calls.add(call);
+                            viaOperation.put(call, o);
+                            callers.computeIfAbsent(o, k -> new LinkedHashSet<>()).add(a);
+                        }
+                        // no contract known: a generated client method straight to the implementing method
+                        if (!byOperationId.containsKey(name) && generatedClient) {
+                            for (Work b : implementations.getOrDefault(name, List.of())) {
+                                if (seen.add(a.id + ">" + b.id)) {
+                                    edges.add(new FlowEdge(a.id, b.id, idx + 1, name + "()", "http"));
+                                    a.refs.computeIfAbsent(idx + 1, k -> new ArrayList<>()).add(new LineRef(b.id, name + "() → " + b.label()));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            for (Http.Call call : calls) {
+                ApiOperation op = viaOperation.get(call);
                 for (Target t : targets) {
                     if (t.work() != a && t.work().file != a.file && Http.matches(call, t.endpoint()) && seen.add(a.id + ">" + t.work().id)) {
-                        edges.add(new FlowEdge(a.id, t.work().id, call.line(), t.endpoint().label(), "http"));
+                        String via = t.endpoint().label() + (op != null ? " (" + op.operationId() + ")" : "");
+                        edges.add(new FlowEdge(a.id, t.work().id, call.line(), via, "http"));
                         a.refs.computeIfAbsent(call.line(), k -> new ArrayList<>())
-                                .add(new LineRef(t.work().id, t.endpoint().label() + " → " + t.work().label()));
+                                .add(new LineRef(t.work().id, via + " → " + t.work().label()));
                     }
                 }
             }
         }
+        linkContracts(works, callers, implementers);
+        markApiCallers(works, edges);
         return edges;
+    }
+
+    /** Changed lines of an API contract jump to the (changed) callers and implementations of that operation. */
+    private static void linkContracts(List<Work> works, Map<ApiOperation, Set<Work>> callers, Map<ApiOperation, Set<Work>> implementers) {
+        Set<ApiOperation> all = new LinkedHashSet<>(callers.keySet());
+        all.addAll(implementers.keySet());
+        for (Work w : works) {
+            for (ApiOperation o : all) {
+                if (!o.file().equals(w.file.path())) {
+                    continue;
+                }
+                Integer line = w.changed.stream().map(DiffLine::newLine)
+                        .filter(n -> n != null && n >= o.line() && n <= o.endLine()).findFirst().orElse(null);
+                if (line == null) {
+                    continue;
+                }
+                List<LineRef> refs = w.refs.computeIfAbsent(line, k -> new ArrayList<>());
+                implementers.getOrDefault(o, Set.of()).forEach(b -> refs.add(new LineRef(b.id, o.operationId() + " → " + b.label())));
+                callers.getOrDefault(o, Set.of()).forEach(a -> refs.add(new LineRef(a.id, "aufgerufen von " + a.label())));
+            }
+        }
+    }
+
+    /** Frontend code that calls the backend belongs to "API-Anbindung" unless an earlier aspect (routing, state, forms) matched. */
+    private void markApiCallers(List<Work> works, List<FlowEdge> httpEdges) {
+        Rules.Rule api = rules.aspects.stream().filter(r -> r.category().equals("fe-api")).findFirst().orElse(null);
+        if (api == null) {
+            return;
+        }
+        Set<String> callers = httpEdges.stream().map(FlowEdge::from).collect(Collectors.toSet());
+        for (Work w : works) {
+            boolean extras = (w.rule == null || w.rule.extras()) && !isTest(w);
+            if (w.frontend && extras && callers.contains(w.id)
+                    && (w.aspect == null || rules.aspects.indexOf(w.aspect) > rules.aspects.indexOf(api))) {
+                w.aspect = api;
+            }
+        }
+    }
+
+    /**
+     * Schema changes and the entities they affect are one review unit: migration hunks (Liquibase/Flyway/SQL)
+     * and changed JPA entities that name the same table share a group "Tabelle x" and link to each other.
+     */
+    private static void linkMigrations(List<Work> works) {
+        Map<String, List<Work>> entities = new HashMap<>();
+        for (Work w : works) {
+            if (w.ctx == null || w.ctx.source == null || isTest(w) || !ENTITY.matcher(w.ctx.source).find()) {
+                continue;
+            }
+            Matcher t = TABLE_ANNOTATION.matcher(w.ctx.source);
+            String table = t.find() ? (t.group(1) != null ? t.group(1) : t.group(2))
+                    : w.ctx.symbols.stream().filter(s -> s.kind().equals("class")).map(Symbol::name).findFirst().orElse(null);
+            if (table != null) {
+                entities.computeIfAbsent(tableKey(table), k -> new ArrayList<>()).add(w);
+            }
+        }
+        for (Work m : works) {
+            if (!"persistence".equals(m.category) || m.symbol != null || m.hunk == null) {
+                continue;
+            }
+            String first = null;
+            for (DiffLine l : m.hunk.lines()) {
+                for (Pattern p : TABLE_IN_MIGRATION) {
+                    Matcher x = p.matcher(l.text());
+                    if (!x.find()) {
+                        continue;
+                    }
+                    String table = x.group(1);
+                    first = first == null ? table : first;
+                    for (Work e : entities.getOrDefault(tableKey(table), List.of())) {
+                        int line = l.newLine() != null ? l.newLine() : m.anchors.values().stream().min(Integer::compare).orElse(1);
+                        addRef(m, line, new LineRef(e.id, "Entity " + e.label()));
+                        int own = e.changed.stream().map(DiffLine::newLine).filter(n -> n != null).findFirst().orElse(e.sortLine());
+                        addRef(e, own, new LineRef(m.id, "Migration " + m.file.path().substring(m.file.path().lastIndexOf('/') + 1)));
+                        if ("persistence".equals(e.category)) {
+                            e.group = "Tabelle " + table;
+                        }
+                    }
+                }
+            }
+            if (first != null) {
+                m.group = "Tabelle " + first;
+            }
+        }
+    }
+
+    private static void addRef(Work w, int line, LineRef ref) {
+        List<LineRef> refs = w.refs.computeIfAbsent(line, k -> new ArrayList<>());
+        if (refs.stream().noneMatch(x -> x.segmentId().equals(ref.segmentId()))) {
+            refs.add(ref);
+        }
+    }
+
+    /** PlayerTeam, player_team and "PLAYER_TEAM" name the same table. */
+    private static String tableKey(String name) {
+        return name.replace("_", "").replace("\"", "").toLowerCase(java.util.Locale.ROOT);
     }
 
     /** Annotation and declaration lines of a symbol (up to the line that opens its body). */
@@ -745,6 +960,8 @@ public final class Analyzer {
         }
         String title = String.join(" → ", chain);
         int rest = steps.size() - chain.size();
+        String trigger = byId.get(steps.getFirst().segmentId()).trigger;
+        title = trigger != null ? trigger + ": " + title : title;
         return rest > 0 ? title + " (+" + rest + ")" : title;
     }
 
@@ -884,7 +1101,8 @@ public final class Analyzer {
         if (w.ctx == null) {
             lines = new ArrayList<>();
             for (DiffLine l : w.hunk.lines()) {
-                lines.add(new DisplayLine(l.type(), l.oldLine(), l.newLine(), l.key(), l.text(), l.changed(), true, null, null));
+                lines.add(new DisplayLine(l.type(), l.oldLine(), l.newLine(), l.key(), l.text(), l.changed(), true, null,
+                        l.newLine() == null ? null : w.refs.get(l.newLine())));
             }
         } else if (w.symbol != null) {
             lines = render(w, w.symbol.startLine(), w.symbol.endLine(), own);
@@ -962,22 +1180,24 @@ public final class Analyzer {
                     groups.add(new Group("flows/" + f.id(), f.title(), f.steps().size() + " Schritte", f.id(),
                             f.steps().stream().map(FlowStep::segmentId).toList()));
                 }
-            } else if (LAYER_CATEGORIES.containsKey(def.id()) || aspectCategory) {
-                // extra categories: grouped by file; adapters by direction (incoming / outgoing)
-                String layer = LAYER_CATEGORIES.get(def.id());
-                Map<String, List<String>> byGroup = new LinkedHashMap<>();
-                works.stream()
-                        .filter(w -> layer != null ? layer.equals(w.layer) : w.aspect != null && w.aspect.category().equals(def.id()))
-                        .sorted(Comparator.comparing((Work w) -> w.file.path()))
-                        .forEach(w -> byGroup.computeIfAbsent(extraGroup(w, layer), k -> new ArrayList<>()).add(w.id));
-                byGroup.forEach((label, ids) -> groups.add(new Group(def.id() + "/" + slug(label), label, null, null, ids)));
             } else {
+                // primary: segments classified into this category by a rule, grouped by the rule's group
                 Map<String, List<String>> byGroup = new LinkedHashMap<>();
                 List<String> groupOrder = rules.rules.stream().map(Rules.Rule::group).distinct().toList();
                 works.stream()
                         .filter(w -> def.id().equals(w.category) && !(def.id().equals("logic") && inFlows.contains(w.id)))
-                        .sorted(Comparator.comparingInt((Work w) -> groupOrder.indexOf(w.group) < 0 ? 999 : groupOrder.indexOf(w.group)))
+                        .sorted(Comparator.comparingInt((Work w) -> groupOrder.indexOf(w.group) < 0 ? 999 : groupOrder.indexOf(w.group))
+                                .thenComparing(w -> w.group))
                         .forEach(w -> byGroup.computeIfAbsent(w.group, k -> new ArrayList<>()).add(w.id));
+                // extra: architecture layer, frontend aspect or concern - grouped by file; adapters by direction
+                String layer = LAYER_CATEGORIES.get(def.id());
+                if (layer != null || aspectCategory || concernCategory(def.id())) {
+                    works.stream()
+                            .filter(w -> !def.id().equals(w.category) && (layer != null && layer.equals(w.layer)
+                                    || w.aspect != null && w.aspect.category().equals(def.id()) || w.concerns.contains(def.id())))
+                            .sorted(Comparator.comparing((Work w) -> w.file.path()))
+                            .forEach(w -> byGroup.computeIfAbsent(extraGroup(w, layer), k -> new ArrayList<>()).add(w.id));
+                }
                 byGroup.forEach((label, ids) -> groups.add(new Group(def.id() + "/" + slug(label), label, null, null, ids)));
             }
             if (!groups.isEmpty()) {
@@ -987,10 +1207,19 @@ public final class Analyzer {
         return result;
     }
 
+    private boolean concernCategory(String id) {
+        return rules.concerns.stream().anyMatch(r -> r.category().equals(id));
+    }
+
     private static String extraGroup(Work w, String layer) {
         if (Structure.ADAPTER.equals(layer)) {
-            String dir = Structure.adapterDirection(w.file.path());
-            return "in".equals(dir) ? "Eingehend (REST, UI, …)" : "out".equals(dir) ? "Ausgehend (Persistenz, Clients, …)" : "Weitere Adapter";
+            return switch (String.valueOf(Structure.adapterDirection(w.file.path()))) {
+                case "in" -> "Eingehend (REST, Messaging, UI, …)";
+                case "out" -> "Ausgehend (Persistenz, Clients, …)";
+                case "mapping" -> "Mapping (DTO ↔ Modell)";
+                case "config" -> "Konfiguration (Transport, Security)";
+                default -> "Weitere Adapter";
+            };
         }
         return w.file.path();
     }

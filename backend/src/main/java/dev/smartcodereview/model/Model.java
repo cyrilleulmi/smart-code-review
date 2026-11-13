@@ -165,8 +165,9 @@ public final class Model {
     }
 
     /**
-     * style: "hexagonal" when the repository is organised as ports & adapters (domain / application / use
-     * cases / adapters), else null. evidence: the directories that show it.
+     * style: "hexagonal" when the repository is organised as ports & adapters (ports or use cases next to
+     * domain and adapters), "layered" for a layered/onion split with adapter packages but no ports (domain /
+     * application / adapter), else null. evidence: the directories that show it.
      */
     @RegisterForReflection
     public record ArchitectureInfo(String style, List<String> evidence) {
@@ -193,9 +194,25 @@ public final class Model {
                            List<Component> components, List<ComponentEdge> componentEdges) {
     }
 
-    /** Directories of the repository at the PR head (to recognise its architecture). */
+    /**
+     * Directories of the repository at the PR head (to recognise its architecture), plus the API contract files
+     * found there (OpenAPI/Swagger) and the operations declared in them. operations null = read by an older version.
+     */
     @RegisterForReflection
-    public record RepoStructure(List<String> directories, boolean truncated) {
+    public record RepoStructure(List<String> directories, boolean truncated, List<String> contracts,
+                                List<ApiOperation> operations) {
+        public RepoStructure(List<String> directories, boolean truncated) {
+            this(directories, truncated, List.of(), List.of());
+        }
+    }
+
+    /**
+     * One operation of an OpenAPI contract: generated clients call it by operationId, generated server
+     * interfaces declare a method of that name. path includes the server base path; line/endLine: 1-based
+     * range of the operation in the contract file (at the PR head).
+     */
+    @RegisterForReflection
+    public record ApiOperation(String file, String operationId, String method, String path, int line, int endLine) {
     }
 
     /** User settings in <data>/settings.json. Disabled categories are hidden and need no ok. */

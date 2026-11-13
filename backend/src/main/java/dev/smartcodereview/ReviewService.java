@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.smartcodereview.analysis.Analyzer;
 import dev.smartcodereview.analysis.Languages;
+import dev.smartcodereview.analysis.OpenApi;
 import dev.smartcodereview.analysis.Rules;
 import dev.smartcodereview.model.Model;
 import dev.smartcodereview.model.Model.Account;
+import dev.smartcodereview.model.Model.ApiOperation;
 import dev.smartcodereview.model.Model.Analysis;
 import dev.smartcodereview.model.Model.Comment;
 import dev.smartcodereview.model.Model.DiffFile;
@@ -193,19 +195,37 @@ public class ReviewService {
             store.readText(DataStore.resolveInside(sourcesDir, f.path())).ifPresent(s -> sources.put(f.path(), s));
         }
         long t0 = System.currentTimeMillis();
-        Analysis analysis = new Analyzer(rules()).analyze(snapshot, sources, structure(ref, snapshot).directories());
+        Analysis analysis = new Analyzer(rules()).analyze(snapshot, sources, structure(ref, snapshot));
         Log.infof("Analysed %s in %d ms: %d segments, %d flows", ref.key(), System.currentTimeMillis() - t0,
                 analysis.segments().size(), analysis.flows().size());
         store.write(analysisFile(ref), analysis);
         return analysis;
     }
 
-    /** Repository directories at the PR head (architecture detection); fetched once, empty if unavailable. */
+    /** At most this many API contracts are read per repository. */
+    private static final int MAX_CONTRACTS = 10;
+
+    /**
+     * Repository directories and API contract operations at the PR head (architecture detection, links through
+     * generated API clients); fetched once, empty if unavailable.
+     */
     private RepoStructure structure(PrRef ref, Snapshot snapshot) {
         Path file = prDirFile(ref, "structure.json");
-        return store.read(file, RepoStructure.class).orElseGet(() -> {
+        return store.read(file, RepoStructure.class).filter(s -> s.operations() != null).orElseGet(() -> {
             try {
-                RepoStructure s = provider(ref.provider()).directories(ref, snapshot.pr().headSha());
+                ReviewProvider provider = provider(ref.provider());
+                String sha = snapshot.pr().headSha();
+                RepoStructure s = provider.directories(ref, sha);
+                List<ApiOperation> operations = new ArrayList<>();
+                List<String> contracts = s.contracts() == null ? List.of() : s.contracts();
+                for (String path : contracts.stream().limit(MAX_CONTRACTS).toList()) {
+                    try {
+                        provider.fileContent(ref, path, sha).ifPresent(text -> operations.addAll(OpenApi.operations(path, text)));
+                    } catch (ProviderException e) {
+                        Log.warnf("API contract %s not readable: %s", path, e.getMessage());
+                    }
+                }
+                s = new RepoStructure(s.directories(), s.truncated(), contracts, operations);
                 store.write(file, s);
                 return s;
             } catch (ProviderException e) {

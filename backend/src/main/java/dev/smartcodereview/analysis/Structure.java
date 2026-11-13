@@ -28,13 +28,25 @@ public final class Structure {
     private static final Set<String> APPLICATION_DIRS = Set.of("application", "port", "ports");
     private static final Set<String> ADAPTER_DIRS = Set.of("adapter", "adapters", "infrastructure", "infra");
     private static final Set<String> PORT_DIRS = Set.of("port", "ports");
+    private static final Set<String> SIDE_DIRS = Set.of("in", "out", "inbound", "outbound", "primary", "secondary",
+            "driving", "driven");
+    /** Folders outside the code: an `infra` below `deploy/` is infrastructure as code, not an adapter layer. */
+    private static final Set<String> NON_CODE_DIRS = Set.of("deploy", "deployment", "deployments", "terraform", "helm",
+            "charts", "k8s", "kubernetes", "docs", "doc", ".github", ".gitlab", "node_modules", "ops", "scripts");
 
     private static final Pattern USECASE_NAME = Pattern.compile("(UseCase|Interactor)(Impl)?$");
     private static final Pattern ADAPTER_NAME = Pattern.compile(
             "(Adapter|Controller|Resource|RepositoryImpl|JpaRepository|Client|Gateway|Listener|Consumer|Producer|Endpoint)$");
     private static final Pattern PORT_NAME = Pattern.compile("Port$");
-    private static final Pattern INBOUND = Pattern.compile("(?i)/(in|inbound|web|rest|http|api|controller|controllers|primary|driving|ui|cli|graphql|grpc)/");
-    private static final Pattern OUTBOUND = Pattern.compile("(?i)/(out|outbound|persistence|repository|repositories|db|jpa|database|client|clients|messaging|external|secondary|driven|mail|storage)/");
+    private static final Pattern INBOUND = Pattern.compile(
+            "(?i)/(in|inbound|web|rest|http|api|controller|controllers|primary|driving|ui|cli|graphql|grpc|errorhandling|exceptionhandling)/");
+    private static final Pattern OUTBOUND = Pattern.compile(
+            "(?i)/(out|outbound|persistence|repository|repositories|db|jpa|database|client|clients|external|secondary|driven|mail|storage|connector|connectors)/");
+    /** Messaging adapters consume (in) or publish (out); the folder alone does not tell which. */
+    private static final Pattern CONSUMER_NAME = Pattern.compile("(Listener|Consumer|Subscriber|Receiver|MessageHandler|EventHandler)$");
+    private static final Pattern PUBLISHER_NAME = Pattern.compile("(Publisher|Producer|Sender|Emitter)$");
+    private static final Pattern MAPPING = Pattern.compile("(?i)/(mapping|mappings|mapper|mappers|converter|converters)/|(Mapper|Converter)(Impl)?\\.\\w+$");
+    private static final Pattern CONFIG = Pattern.compile("(?i)/(config|configuration|configurations|security)/|(Config|Configuration)\\.\\w+$");
 
     private static final Pattern FRONTEND_EXT = Pattern.compile("(?i)\\.(tsx|jsx|vue|svelte|html?)$");
     private static final Pattern SCRIPT_EXT = Pattern.compile("(?i)\\.(ts|js|mjs|mts)$");
@@ -56,11 +68,19 @@ public final class Structure {
             String[] parts = dir.split("/");
             for (int i = 0; i < parts.length; i++) {
                 String name = parts[i].toLowerCase(Locale.ROOT);
+                if (NON_CODE_DIRS.contains(name)) {
+                    break;
+                }
                 String kind = DOMAIN_DIRS.contains(name) ? DOMAIN : USECASE_DIRS.contains(name) ? USECASE
                         : PORT_DIRS.contains(name) ? "port" : APPLICATION_DIRS.contains(name) ? APPLICATION
                         : ADAPTER_DIRS.contains(name) ? ADAPTER : null;
                 if (kind != null && kinds.add(kind)) {
                     evidence.add(String.join("/", java.util.Arrays.copyOf(parts, i + 1)));
+                }
+                // adapter/in, adapter/out: driving and driven sides are a ports & adapters vocabulary
+                if (ADAPTER.equals(kind) && i + 1 < parts.length && SIDE_DIRS.contains(parts[i + 1].toLowerCase(Locale.ROOT))
+                        && kinds.add("side")) {
+                    evidence.add(String.join("/", java.util.Arrays.copyOf(parts, i + 2)));
                 }
             }
         }
@@ -71,6 +91,19 @@ public final class Structure {
         }
         evidence.sort(Comparator.naturalOrder());
         return evidence;
+    }
+
+    /**
+     * "hexagonal" when the evidence has ports, use cases or adapter/in|out (ports &amp; adapters), else "layered": domain /
+     * application / adapter packages without ports, i.e. a layered (onion-style) split with adapter entry points.
+     */
+    public static String styleOf(List<String> evidence) {
+        if (evidence.isEmpty()) {
+            return null;
+        }
+        boolean ports = evidence.stream().map(d -> d.substring(d.lastIndexOf('/') + 1).toLowerCase(Locale.ROOT))
+                .anyMatch(n -> PORT_DIRS.contains(n) || USECASE_DIRS.contains(n) || SIDE_DIRS.contains(n));
+        return ports ? "hexagonal" : "layered";
     }
 
     /** Layer of a file in a ports &amp; adapters project: name conventions first, then the deepest marker folder. */
@@ -108,9 +141,26 @@ public final class Structure {
         return null;
     }
 
-    /** "in" (driving: REST, UI, CLI), "out" (driven: persistence, clients) or null. */
+    /**
+     * "in" (driving: REST, UI, CLI, message listeners), "out" (driven: persistence, clients, publishers),
+     * "mapping" (DTO &lt;-&gt; model), "config" (transport/security configuration) or null.
+     */
     public static String adapterDirection(String path) {
         String p = "/" + path;
+        String file = p.substring(p.lastIndexOf('/') + 1);
+        String stem = file.contains(".") ? file.substring(0, file.indexOf('.')) : file;
+        if (CONSUMER_NAME.matcher(stem).find()) {
+            return "in";
+        }
+        if (PUBLISHER_NAME.matcher(stem).find()) {
+            return "out";
+        }
+        if (MAPPING.matcher(p).find()) {
+            return "mapping";
+        }
+        if (CONFIG.matcher(p).find()) {
+            return "config";
+        }
         if (INBOUND.matcher(p).find() || p.matches(".*(Controller|Resource|Endpoint)\\.\\w+$")) {
             return "in";
         }

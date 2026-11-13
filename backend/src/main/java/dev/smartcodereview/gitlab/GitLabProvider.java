@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.smartcodereview.analysis.Languages;
+import dev.smartcodereview.analysis.OpenApi;
 import dev.smartcodereview.diff.PatchParser;
 import dev.smartcodereview.model.Model;
 import dev.smartcodereview.model.Model.Comment;
@@ -199,18 +200,22 @@ public class GitLabProvider implements ReviewProvider {
     @Override
     public Model.RepoStructure directories(PrRef ref, String sha) {
         List<String> dirs = new ArrayList<>();
+        List<String> contracts = new ArrayList<>();
         for (int page = 1; page <= MAX_TREE_PAGES; page++) {
             JsonNode items = getJson(projectPath(ref) + "/repository/tree?recursive=true&per_page=100&ref=" + sha + "&page=" + page);
             items.forEach(n -> {
+                String path = n.path("path").asText();
                 if ("tree".equals(n.path("type").asText())) {
-                    dirs.add(n.path("path").asText());
+                    dirs.add(path);
+                } else if ("blob".equals(n.path("type").asText()) && OpenApi.isContract(path)) {
+                    contracts.add(path);
                 }
             });
             if (items.size() < 100) {
-                return new Model.RepoStructure(dirs, false);
+                return new Model.RepoStructure(dirs, false, contracts, null);
             }
         }
-        return new Model.RepoStructure(dirs, true);
+        return new Model.RepoStructure(dirs, true, contracts, null);
     }
 
     @Override
