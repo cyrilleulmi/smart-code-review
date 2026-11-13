@@ -16,8 +16,10 @@ public final class Rules {
     public record CategoryDef(String id, String label, String description, String icon) {
     }
 
+    /** symbols: files matched by `paths` are still split into functions/classes (e.g. tests into test cases). */
     public record Rule(String id, String category, String group, String reason, List<Pattern> paths,
-                       List<Pattern> lines, List<Pattern> require, Pattern symbol, List<String> kinds, String special) {
+                       List<Pattern> lines, List<Pattern> require, Pattern symbol, List<String> kinds, String special,
+                       boolean symbols) {
 
         boolean matchesPath(String path) {
             return !paths.isEmpty() && paths.stream().anyMatch(p -> p.matcher(path).matches());
@@ -54,7 +56,7 @@ public final class Rules {
                     r.path("group").asText(r.path("id").asText()), r.path("reason").asText(""),
                     patterns(r.path("paths"), true), patterns(r.path("lines"), false), patterns(r.path("require"), false),
                     r.hasNonNull("symbol") ? Pattern.compile(r.get("symbol").asText()) : null,
-                    strings(r.path("kinds")), r.path("special").asText(null)));
+                    strings(r.path("kinds")), r.path("special").asText(null), r.path("symbols").asBoolean(false)));
         }
         return new Rules(categories, rules, hash);
     }

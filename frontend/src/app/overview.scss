@@ -310,3 +310,12 @@ h2 {
     color: var(--fg-muted);
   }
 }
+
+.multi {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 12px;
+  color: #e0b46d;
+  font-size: 12px;
+}

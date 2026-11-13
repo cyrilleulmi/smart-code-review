@@ -15,10 +15,15 @@ import dev.smartcodereview.model.Model.Hunk;
 import dev.smartcodereview.model.Model.LineRef;
 import dev.smartcodereview.model.Model.Segment;
 import dev.smartcodereview.model.Model.Snapshot;
+import dev.smartcodereview.model.Model.TestCoverage;
+import dev.smartcodereview.model.Model.TestInfo;
+import dev.smartcodereview.model.Model.TestSubject;
 
 import java.time.Instant;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -36,8 +41,11 @@ import java.util.stream.Collectors;
  *   <li>Every changed line is assigned to the innermost function/class/type that contains it (or to the
  *       hunk/module level), giving <em>segments</em>.</li>
  *   <li>Path rules and line-pattern rules (rules.json) mark segments as quick wins, tests, styles.</li>
- *   <li>Changed functions that reference each other (name match + import check) are connected; connected
- *       groups become <em>flows</em>, ordered from the entry point along the calls.</li>
+ *   <li>Changed functions that reference each other (name match + import check) are connected; every entry
+ *       point gets a <em>flow</em> with everything it reaches, in call order. A function reached from two entry
+ *       points is part of both flows.</li>
+ *   <li>Changed test cases are linked to the changed code they reach through the same call graph.</li>
+ *   <li>Every segment lists its <em>places</em> (all groups that show it); each place needs its own "ok".</li>
  * </ol>
  */
 public final class Analyzer {
@@ -59,7 +67,7 @@ public final class Analyzer {
     private static final Pattern DEEP_LAYER = Pattern.compile("(?i)(repository|repo|dao|store|db|database|client|gateway|adapter|lib/|utils?/|helpers?/)");
 
     /** Bump when the analysis logic changes, so stored analyses are recomputed. */
-    public static final int VERSION = 7;
+    public static final int VERSION = 10;
 
     private final Rules rules;
 
@@ -127,29 +135,62 @@ public final class Analyzer {
             if (w.rule == null) {
                 classifyByLines(w);
             }
+            if (isTest(w)) {
+                w.group = w.file.path(); // tests are listed per file
+                if (w.symbol != null && w.symbol.kind().equals("test")) {
+                    w.reason = "Testfall";
+                }
+            }
         }
 
         List<FlowEdge> edges = findEdges(works);
         List<Flow> flows = buildFlows(works, edges);
         Set<String> inFlows = flows.stream().flatMap(f -> f.steps().stream()).map(FlowStep::segmentId).collect(Collectors.toSet());
-
-        List<Segment> segments = new ArrayList<>();
         for (Work w : works) {
             if (w.category == null) {
                 w.category = "logic";
                 w.group = w.file.path();
                 w.reason = inFlows.contains(w.id) ? "Teil eines Datenflusses" : "Kein Aufrufzusammenhang zu anderen Änderungen gefunden";
             }
-            segments.add(toSegment(w));
+        }
+        List<Category> categories = categories(works, flows, inFlows);
+        Map<String, List<String>> places = new HashMap<>();
+        for (Category c : categories) {
+            for (Group g : c.groups()) {
+                for (String id : g.segmentIds()) {
+                    List<String> list = places.computeIfAbsent(id, k -> new ArrayList<>());
+                    if (!list.contains(g.id())) {
+                        list.add(g.id());
+                    }
+                }
+            }
+        }
+        List<TestInfo> tests = tests(works, edges, snapshot.files());
+        Map<String, List<String>> testedBy = new HashMap<>();
+        for (TestInfo t : tests) {
+            t.covers().forEach(c -> testedBy.computeIfAbsent(c.segmentId(), k -> new ArrayList<>()).add(t.segmentId()));
+        }
+
+        List<Segment> segments = new ArrayList<>();
+        for (Work w : works) {
+            segments.add(toSegment(w, places.getOrDefault(w.id, List.of()), testedBy.getOrDefault(w.id, List.of())));
         }
         return new Analysis(Model.SCHEMA_VERSION, Instant.now().toString(), snapshot.pr().headSha(), fingerprint(rules),
-                segments, categories(works, flows, inFlows), flows);
+                segments, categories, flows, tests);
+    }
+
+    private static boolean isTest(Work w) {
+        return "tests".equals(w.category);
+    }
+
+    private static boolean isTestCase(Work w) {
+        return isTest(w) && w.symbol != null && w.symbol.kind().equals("test");
     }
 
     private void segmentFile(DiffFile file, String source, List<Work> out) {
         Rules.Rule pathRule = rules.forPath(file.path());
-        boolean withSymbols = pathRule == null && source != null && Languages.hasSymbols(file.language())
-                && !"removed".equals(file.status());
+        boolean withSymbols = (pathRule == null || pathRule.symbols()) && source != null
+                && Languages.hasSymbols(file.language()) && !"removed".equals(file.status());
 
         if (!withSymbols) {
             for (Hunk h : file.hunks()) {
@@ -214,6 +255,10 @@ public final class Analyzer {
         }
         out.addAll(bySymbol.values());
         out.addAll(moduleByHunk.values());
+        if (pathRule != null) {
+            bySymbol.values().forEach(w -> applyRule(w, pathRule));
+            moduleByHunk.values().forEach(w -> applyRule(w, pathRule));
+        }
     }
 
     /**
@@ -306,7 +351,7 @@ public final class Analyzer {
     private List<FlowEdge> findEdges(List<Work> works) {
         List<Work> callees = works.stream()
                 .filter(w -> "symbol".equals(w.kind) && (w.symbol.isCallable() || "const".equals(w.symbol.kind()))
-                        && w.symbol.name().length() >= 3 && !NOT_CALLED.contains(w.symbol.name()))
+                        && !w.symbol.isTestBlock() && w.symbol.name().length() >= 3 && !NOT_CALLED.contains(w.symbol.name()))
                 .toList();
         List<FlowEdge> edges = new ArrayList<>();
         Map<Work, List<Integer>> searchLines = new HashMap<>();
@@ -323,6 +368,9 @@ public final class Analyzer {
             for (Work b : callees) {
                 if (a == b || (a.symbol != null && b.ctx == a.ctx && b.symbol.contains(a.symbol.startLine()) && b.symbol.span() >= a.symbol.span())) {
                     continue; // self or enclosing symbol
+                }
+                if (isTest(b) && !isTest(a)) {
+                    continue; // production code does not call test helpers
                 }
                 if (b.ctx != a.ctx && !importsFrom(a.ctx, b)) {
                     continue;
@@ -377,6 +425,10 @@ public final class Analyzer {
         }
         String imports = caller.importsText;
         String path = callee.file.path();
+        // Go: files of the same directory form one package and need no import
+        if ("go".equals(caller.diff.language()) && "go".equals(callee.file.language()) && dirOf(caller.diff.path()).equals(dirOf(path))) {
+            return true;
+        }
         String fileName = path.substring(path.lastIndexOf('/') + 1);
         String stem = fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
         if (stem.equals("index")) {
@@ -409,6 +461,10 @@ public final class Analyzer {
             return caller.text.code.stream().anyMatch(l -> cls.matcher(l).find());
         }
         return false;
+    }
+
+    private static String dirOf(String path) {
+        return path.contains("/") ? path.substring(0, path.lastIndexOf('/')) : "";
     }
 
     /** 1-based line of the first reference to b in a's search lines; references on changed lines win. */
@@ -448,15 +504,28 @@ public final class Analyzer {
      * a logger): they would glue unrelated flows together, so calls to them do not form flows.
      */
     private static final int HUB_LIMIT = 5;
-    /** Bigger connected groups are split into one flow per entry point. */
-    private static final int MAX_FLOW_STEPS = 20;
+    /**
+     * In bigger connected groups (e.g. a whole new app in one PR) every entry point would reach almost
+     * everything; there each function is shown in one flow only (the first entry point that reaches it).
+     */
+    private static final int MAX_OVERLAP_STEPS = 20;
+    /** How deep tests are followed into the code (test -> a -> b -> c). */
+    private static final int MAX_TEST_DEPTH = 4;
 
+    /**
+     * Every entry point (a changed function no other changed function calls) gets its own flow with all it
+     * reaches. Functions reached from several entry points are therefore part of several flows (only in
+     * groups up to MAX_OVERLAP_STEPS); cycles without an entry point start at the best candidate (layer heuristic).
+     */
     private List<Flow> buildFlows(List<Work> works, List<FlowEdge> allEdges) {
         Map<String, Work> byId = new HashMap<>();
         works.forEach(w -> byId.put(w.id, w));
+        // tests are linked to the code separately (see tests()); they never form flows
+        List<FlowEdge> codeEdges = allEdges.stream()
+                .filter(e -> !isTest(byId.get(e.from())) && !isTest(byId.get(e.to()))).toList();
         Map<String, Integer> callers = new HashMap<>();
-        allEdges.forEach(e -> callers.merge(e.to(), 1, Integer::sum));
-        List<FlowEdge> edges = allEdges.stream().filter(e -> callers.get(e.to()) <= HUB_LIMIT).toList();
+        codeEdges.forEach(e -> callers.merge(e.to(), 1, Integer::sum));
+        List<FlowEdge> edges = codeEdges.stream().filter(e -> callers.get(e.to()) <= HUB_LIMIT).toList();
         Map<String, String> parent = new HashMap<>();
         for (FlowEdge e : edges) {
             union(parent, e.from(), e.to());
@@ -489,20 +558,17 @@ public final class Analyzer {
             List<String> candidates = new ArrayList<>(members);
             candidates.sort(Comparator.comparingInt((String id) -> inDegree.getOrDefault(id, 0) == 0 ? 0 : 1).thenComparing(entryOrder));
 
-            boolean split = members.size() > MAX_FLOW_STEPS;
-            List<FlowStep> steps = new ArrayList<>();
-            Set<String> visited = new HashSet<>();
+            Set<String> covered = new HashSet<>();
+            boolean overlap = members.size() <= MAX_OVERLAP_STEPS;
             for (String start : candidates) {
-                if (visited.contains(start)) {
+                if (covered.contains(start)) {
                     continue;
                 }
-                visit(start, null, 0, outgoing, visited, steps);
-                if (split) {
-                    addFlow(flows, steps, flowEdges, byId);
-                    steps = new ArrayList<>();
-                }
+                List<FlowStep> steps = new ArrayList<>();
+                visit(start, null, 0, outgoing, overlap ? new HashSet<>() : covered, steps);
+                steps.forEach(st -> covered.add(st.segmentId()));
+                addFlow(flows, steps, flowEdges, byId);
             }
-            addFlow(flows, steps, flowEdges, byId);
         }
         flows.sort(Comparator.comparingInt((Flow f) -> -f.steps().size()));
         List<Flow> renumbered = new ArrayList<>();
@@ -581,9 +647,106 @@ public final class Analyzer {
         }
     }
 
+    // ------------------------------------------------------------------ tests
+
+    /** Test file name -> name of the unit under test: PlayerResourceTest.java -> PlayerResource, a.service.spec.ts -> a.service. */
+    private static final Pattern TEST_FILE = Pattern.compile(
+            "^(?:test_(.+)\\.py|(.+?)(?:\\.(?:spec|test|e2e-spec|e2e)\\.[A-Za-z]+|_test\\.[A-Za-z]+|(?:Tests?|IT|Spec)\\.(?:java|kt|cs|groovy)))$");
+
+    /**
+     * For every changed test case: the changed code it reaches through calls (directly, via test helpers, or
+     * indirectly via other changed code), and the components it is about (naming convention + called code).
+     */
+    private static List<TestInfo> tests(List<Work> works, List<FlowEdge> edges, List<DiffFile> files) {
+        Map<String, Work> byId = new HashMap<>();
+        works.forEach(w -> byId.put(w.id, w));
+        Map<String, List<FlowEdge>> outgoing = new HashMap<>();
+        for (FlowEdge e : edges) {
+            outgoing.computeIfAbsent(e.from(), k -> new ArrayList<>()).add(e);
+        }
+        outgoing.values().forEach(l -> l.sort(Comparator.comparing(e -> e.line() == null ? 0 : e.line())));
+
+        List<TestInfo> result = new ArrayList<>();
+        for (Work t : works) {
+            if (!isTestCase(t)) {
+                continue;
+            }
+            Map<String, TestCoverage> covers = new LinkedHashMap<>();
+            record Hop(String id, String via, Integer line, int depth) {
+            }
+            Deque<Hop> queue = new ArrayDeque<>();
+            outgoing.getOrDefault(t.id, List.of()).forEach(e -> queue.add(new Hop(e.to(), null, e.line(), 1)));
+            Set<String> seen = new HashSet<>(Set.of(t.id));
+            while (!queue.isEmpty()) {
+                Hop h = queue.poll();
+                Work w = byId.get(h.id());
+                if (w == null || !seen.add(h.id()) || isTestCase(w)) {
+                    continue;
+                }
+                String via = h.via();
+                if (!isTest(w)) { // a test helper/fixture is transparent
+                    covers.put(w.id, new TestCoverage(w.id, h.via() == null, h.via(), h.line()));
+                    via = w.id;
+                }
+                if (h.depth() < MAX_TEST_DEPTH) {
+                    for (FlowEdge e : outgoing.getOrDefault(w.id, List.of())) {
+                        queue.add(new Hop(e.to(), via, h.line(), h.depth() + 1));
+                    }
+                }
+            }
+            result.add(new TestInfo(t.id, t.symbol.displayName(), t.file.path(), subjects(t, covers.values(), byId, files),
+                    List.copyOf(covers.values())));
+        }
+        return result;
+    }
+
+    private static List<TestSubject> subjects(Work test, Iterable<TestCoverage> covers, Map<String, Work> byId, List<DiffFile> files) {
+        Map<String, TestSubject> subjects = new LinkedHashMap<>();
+        String path = test.file.path();
+        Matcher m = TEST_FILE.matcher(path.substring(path.lastIndexOf('/') + 1));
+        if (m.matches()) {
+            String unit = m.group(1) != null ? m.group(1) : m.group(2);
+            DiffFile match = files.stream()
+                    .filter(f -> !f.path().equals(path) && !TEST_FILE.matcher(fileName(f.path())).matches()
+                            && stemOf(fileName(f.path())).equals(unit))
+                    // player-view.spec.ts -> player-view.ts rather than player-view.scss
+                    .max(Comparator.comparing((DiffFile f) -> f.language().equals(test.file.language()))
+                            .thenComparing(f -> Languages.hasSymbols(f.language()))
+                            .thenComparingInt(f -> commonPrefix(f.path(), path)))
+                    .orElse(null);
+            String name = match == null ? unit : fileName(match.path());
+            subjects.put(match == null ? "?" + unit : match.path(), new TestSubject(name, match == null ? null : match.path(), match != null, "name"));
+        }
+        for (TestCoverage c : covers) {
+            Work w = byId.get(c.segmentId());
+            if (!c.direct() || subjects.containsKey(w.file.path())) {
+                continue;
+            }
+            String name = w.symbol != null && w.symbol.container() != null ? w.symbol.container() : fileName(w.file.path());
+            subjects.put(w.file.path(), new TestSubject(name, w.file.path(), true, "call"));
+        }
+        return List.copyOf(subjects.values());
+    }
+
+    private static String fileName(String path) {
+        return path.substring(path.lastIndexOf('/') + 1);
+    }
+
+    private static String stemOf(String fileName) {
+        return fileName.contains(".") ? fileName.substring(0, fileName.lastIndexOf('.')) : fileName;
+    }
+
+    private static int commonPrefix(String a, String b) {
+        int i = 0;
+        while (i < a.length() && i < b.length() && a.charAt(i) == b.charAt(i)) {
+            i++;
+        }
+        return i;
+    }
+
     // ------------------------------------------------------------------ output
 
-    private Segment toSegment(Work w) {
+    private Segment toSegment(Work w, List<String> places, List<String> testedBy) {
         Set<String> own = w.changed.stream().map(DiffLine::key).collect(Collectors.toCollection(LinkedHashSet::new));
         List<DisplayLine> lines;
         if (w.ctx == null) {
@@ -607,7 +770,8 @@ public final class Analyzer {
         return new Segment(w.id, w.file.path(), w.file.language(), w.kind,
                 s == null ? null : s.displayName(), s == null ? null : s.kind(),
                 s == null ? null : s.startLine(), s == null ? null : s.endLine(),
-                w.category, w.group, w.rule == null ? null : w.rule.id(), w.reason, List.copyOf(own), lines);
+                w.category, w.group, w.rule == null ? null : w.rule.id(), w.reason, List.copyOf(own), lines,
+                List.copyOf(places), List.copyOf(testedBy));
     }
 
     /** Lines of the new file in [start, end] with deletions woven in; long unchanged stretches collapse to gaps. */

@@ -6,6 +6,7 @@ import {
   computed,
   inject,
   input,
+  linkedSignal,
   signal,
   viewChild,
 } from '@angular/core';
@@ -35,7 +36,8 @@ const INDENT = 28;
 
 /**
  * A data flow: a call-tree diagram on top, below the code of each step in call order. Call sites inside
- * the code are connected to the step they call with lines in the left margin.
+ * the code are connected to the step they call with lines in the left margin. Steps can be hidden, the view
+ * can focus on one branch, hide finished steps, or walk through the steps one by one.
  */
 @Component({
   selector: 'app-flow-view',
@@ -53,6 +55,14 @@ export class FlowView {
   protected readonly railHeight = signal(0);
   protected readonly hovered = signal<string | null>(null);
   protected readonly indent = INDENT;
+
+  /** The flow's place: each step needs an ok here (a step can be part of several flows). */
+  protected readonly place = computed(() => 'flows/' + this.flow().id);
+  /** Steps hidden by the user (eye / focus). Reset when another flow is shown. */
+  protected readonly hidden = linkedSignal<string, ReadonlySet<string>>({ source: () => this.flow().id, computation: () => new Set() });
+  /** Step-by-step mode: index of the only step shown, null = off. */
+  protected readonly stepIndex = linkedSignal<string, number | null>({ source: () => this.flow().id, computation: () => null });
+  protected readonly hideDone = signal(false);
 
   protected readonly nodes = computed<Node[]>(() => {
     const segs = this.store.segments();
@@ -95,13 +105,31 @@ export class FlowView {
     return map;
   });
 
-  protected readonly progress = computed(() => this.store.progressOf(this.flow().steps.map((s) => s.segmentId)));
+  protected readonly progress = computed(() => this.store.progressOf(this.slots()));
+
+  private readonly slots = computed(() => this.flow().steps.map((s) => ({ segmentId: s.segmentId, place: this.place() })));
+
+  /** Segment ids whose code is shown. */
+  protected readonly visible = computed<ReadonlySet<string>>(() => {
+    const nodes = this.nodes();
+    const i = this.stepIndex();
+    if (i != null) {
+      return new Set(nodes[i] ? [nodes[i].step.segmentId] : []);
+    }
+    const hidden = this.hidden();
+    const hideDone = this.hideDone();
+    return new Set(nodes.map((n) => n.step.segmentId).filter((id) => !hidden.has(id) && !(hideDone && this.isDone(id))));
+  });
+
+  protected readonly hiddenCount = computed(() => this.nodes().length - this.visible().size);
 
   constructor() {
     // Lay out the connectors once the cards are rendered (and again when they change size).
     afterRenderEffect((onCleanup) => {
       this.nodes();
+      this.visible();
       this.store.ok();
+      this.store.okAt();
       this.store.comments();
       this.store.collapseDone();
       const host = this.cards().nativeElement;
@@ -112,11 +140,74 @@ export class FlowView {
     });
     afterRenderEffect(() => {
       const target = this.store.focusSegment();
-      if (target && this.stepOf()[target]) {
-        this.scrollTo(target);
+      this.visible();
+      if (target && this.stepOf()[target] && this.scrollIntoView(target)) {
         this.store.focusSegment.set(null);
       }
     });
+  }
+
+  protected isDone(id: string): boolean {
+    const p = this.nodeProgress(id);
+    return p.total > 0 && p.ok === p.total;
+  }
+
+  protected toggleHidden(id: string, event: Event): void {
+    event.stopPropagation();
+    const next = new Set(this.hidden());
+    next.has(id) ? next.delete(id) : next.add(id);
+    this.hidden.set(next);
+    this.stepIndex.set(null);
+  }
+
+  /** Shows only this step and everything it calls (its branch of the call tree). */
+  protected focusOn(id: string, event: Event): void {
+    event.stopPropagation();
+    const branch = new Set([id]);
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const s of this.flow().steps) {
+        if (s.parentSegmentId && branch.has(s.parentSegmentId) && !branch.has(s.segmentId)) {
+          branch.add(s.segmentId);
+          grew = true;
+        }
+      }
+    }
+    this.hidden.set(new Set(this.flow().steps.map((s) => s.segmentId).filter((s) => !branch.has(s))));
+    this.hideDone.set(false);
+    this.stepIndex.set(null);
+  }
+
+  protected showAll(): void {
+    this.hidden.set(new Set());
+    this.hideDone.set(false);
+    this.stepIndex.set(null);
+  }
+
+  protected startSteps(): void {
+    const nodes = this.nodes();
+    const firstOpen = nodes.findIndex((n) => !this.isDone(n.step.segmentId));
+    this.stepIndex.set(Math.max(0, firstOpen));
+  }
+
+  protected step(delta: number): void {
+    const i = this.stepIndex() ?? 0;
+    this.stepIndex.set(Math.min(this.nodes().length - 1, Math.max(0, i + delta)));
+  }
+
+  /** Marks the current step as ok (here) and moves on to the next one. */
+  protected okAndNext(): void {
+    const node = this.nodes()[this.stepIndex() ?? 0];
+    if (!node) return;
+    const lines = this.store.linesOf([{ segmentId: node.step.segmentId, place: this.place() }]);
+    this.store.mark(lines, true, `segment:${node.step.segmentId}`);
+    if ((this.stepIndex() ?? 0) < this.nodes().length - 1) {
+      this.step(1);
+    } else {
+      this.stepIndex.set(null);
+      this.store.notify('Flow durchgearbeitet');
+    }
   }
 
   protected calledBy(node: Node): string | null {
@@ -151,24 +242,46 @@ export class FlowView {
   }
 
   protected nodeProgress(id: string): { ok: number; total: number } {
-    return this.store.progressOf([id]);
+    return this.store.progressOf([{ segmentId: id, place: this.place() }]);
   }
 
   protected markFlow(): void {
-    this.store.toggle(this.store.linesOf(this.flow().steps.map((s) => s.segmentId)), `flow:${this.flow().id}`);
+    this.store.toggle(this.store.linesOf(this.slots()), `flow:${this.flow().id}`);
   }
 
+  /** Jumps to a step (making it visible first); segments outside this flow are shown at their own place. */
   protected scrollTo(segmentId: string): void {
-    const el = this.cards().nativeElement.querySelector<HTMLElement>(`app-code-block[data-segment="${segmentId}"]`);
-    if (!el) {
+    const index = this.nodes().findIndex((n) => n.step.segmentId === segmentId);
+    if (index < 0) {
       this.store.reveal(segmentId);
       return;
+    }
+    if (!this.visible().has(segmentId)) {
+      if (this.stepIndex() != null) {
+        this.stepIndex.set(index);
+      } else {
+        const next = new Set(this.hidden());
+        next.delete(segmentId);
+        this.hidden.set(next);
+        if (this.hideDone() && this.isDone(segmentId)) {
+          this.hideDone.set(false);
+        }
+      }
+    }
+    this.store.focusSegment.set(segmentId);
+  }
+
+  private scrollIntoView(segmentId: string): boolean {
+    const el = this.cards().nativeElement.querySelector<HTMLElement>(`app-code-block[data-segment="${segmentId}"]`);
+    if (!el) {
+      return false;
     }
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     el.classList.remove('flash');
     void el.offsetWidth;
     el.classList.add('flash');
     setTimeout(() => el.classList.remove('flash'), 1400);
+    return true;
   }
 
   protected scrollToParent(node: Node): void {

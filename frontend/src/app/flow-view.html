@@ -12,6 +12,33 @@
   </button>
 </div>
 
+<div class="focus-bar">
+  @if (stepIndex() === null) {
+    <button type="button" class="ftool" (click)="startSteps()" title="Immer nur einen Schritt zeigen, mit «Ok & weiter»">
+      <app-icon name="play" [size]="13" /> Einzeln durchgehen
+    </button>
+    <button type="button" class="ftool" [class.on]="hideDone()" (click)="hideDone.set(!hideDone())">
+      <app-icon name="eyeOff" [size]="13" /> Erledigte ausblenden
+    </button>
+    <button type="button" class="ftool" (click)="store.setCollapsedAll(true)"><app-icon name="collapse" [size]="13" /> Alle einklappen</button>
+    <button type="button" class="ftool" (click)="store.setCollapsedAll(false)"><app-icon name="expand" [size]="13" /> Alle ausklappen</button>
+    @if (hiddenCount() > 0) {
+      <span class="info">{{ hiddenCount() }} von {{ nodes().length }} Schritten ausgeblendet</span>
+      <button type="button" class="ftool" (click)="showAll()"><app-icon name="eye" [size]="13" /> Alle zeigen</button>
+    }
+    <span class="spacer"></span>
+    <span class="hint">Im Diagramm: <app-icon name="eye" [size]="11" /> ein-/ausblenden · <app-icon name="focus" [size]="11" /> nur dieser Zweig</span>
+  } @else {
+    @let i = stepIndex()!;
+    <span class="step-info">Schritt <b>{{ i + 1 }}</b> von {{ nodes().length }}</span>
+    <button type="button" class="ftool" [disabled]="i === 0" (click)="step(-1)"><app-icon name="arrowLeft" [size]="13" /> Zurück</button>
+    <button type="button" class="ftool primary" (click)="okAndNext()"><app-icon name="check" [size]="13" /> Ok &amp; weiter</button>
+    <button type="button" class="ftool" [disabled]="i === nodes().length - 1" (click)="step(1)">Weiter <app-icon name="arrowRight" [size]="13" /></button>
+    <span class="spacer"></span>
+    <button type="button" class="ftool" (click)="stepIndex.set(null)"><app-icon name="close" [size]="13" /> Beenden</button>
+  }
+</div>
+
 <div class="diagram" role="list">
   <svg [attr.width]="d.width" [attr.height]="d.height" class="edges">
     <defs>
@@ -25,10 +52,12 @@
   </svg>
   @for (n of nodes(); track n.step.segmentId; let i = $index) {
     @let p = nodeProgress(n.step.segmentId);
-    <button type="button" class="node" role="listitem"
+    <div class="node" role="listitem" tabindex="0"
             [style.left.px]="n.x" [style.top.px]="n.y" [style.width.px]="d.nodeW" [style.height.px]="d.nodeH"
             [class.done]="p.total > 0 && p.ok === p.total" [class.quick]="n.segment.category === 'quick-wins'"
-            (mouseenter)="hovered.set(n.step.segmentId)" (mouseleave)="hovered.set(null)" (click)="scrollTo(n.step.segmentId)">
+            [class.off]="!visible().has(n.step.segmentId)" [class.current]="stepIndex() === i"
+            (mouseenter)="hovered.set(n.step.segmentId)" (mouseleave)="hovered.set(null)"
+            (click)="scrollTo(n.step.segmentId)" (keydown.enter)="scrollTo(n.step.segmentId)">
       <span class="no">{{ i + 1 }}</span>
       <span class="txt">
         <span class="name"><app-symbol-badge [kind]="n.segment.symbolKind" /> {{ nodeName(n.segment) }}</span>
@@ -39,7 +68,15 @@
       } @else {
         <span class="cnt">{{ p.ok }}/{{ p.total }}</span>
       }
-    </button>
+      <span class="acts">
+        <button type="button" (click)="toggleHidden(n.step.segmentId, $event)" [title]="hidden().has(n.step.segmentId) ? 'Einblenden' : 'Ausblenden'">
+          <app-icon [name]="hidden().has(n.step.segmentId) ? 'eyeOff' : 'eye'" [size]="12" />
+        </button>
+        <button type="button" (click)="focusOn(n.step.segmentId, $event)" title="Nur diesen Schritt und was er aufruft zeigen">
+          <app-icon name="focus" [size]="12" />
+        </button>
+      </span>
+    </div>
   }
 </div>
 
@@ -50,16 +87,26 @@
     }
   </svg>
   @for (n of nodes(); track n.step.segmentId; let i = $index) {
-    <app-code-block
-      [segment]="n.segment"
-      [step]="i + 1"
-      [stepOf]="stepOf()"
-      [calledBy]="calledBy(n)"
-      [style.margin-left.px]="32 + n.step.depth * indent"
-      (mouseenter)="hovered.set(n.step.segmentId)"
-      (mouseleave)="hovered.set(null)"
-      (refClick)="scrollTo($event)"
-      (calledByClick)="scrollToParent(n)"
-    />
+    @if (visible().has(n.step.segmentId)) {
+      <app-code-block
+        [segment]="n.segment"
+        [place]="place()"
+        [step]="i + 1"
+        [stepOf]="stepOf()"
+        [calledBy]="calledBy(n)"
+        [style.margin-left.px]="32 + n.step.depth * indent"
+        (mouseenter)="hovered.set(n.step.segmentId)"
+        (mouseleave)="hovered.set(null)"
+        (refClick)="scrollTo($event)"
+        (calledByClick)="scrollToParent(n)"
+      />
+    } @else if (stepIndex() === null) {
+      <button type="button" class="hidden-step" [style.margin-left.px]="32 + n.step.depth * indent" (click)="toggleHidden(n.step.segmentId, $event)"
+              title="Einblenden">
+        <span class="no">{{ i + 1 }}</span> {{ nodeName(n.segment) }}
+        <span class="dim">{{ isDone(n.step.segmentId) && !hidden().has(n.step.segmentId) ? 'erledigt' : 'ausgeblendet' }}</span>
+        <app-icon name="eye" [size]="12" />
+      </button>
+    }
   }
 </div>

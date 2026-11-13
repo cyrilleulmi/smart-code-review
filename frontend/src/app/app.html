@@ -92,7 +92,7 @@
           }
           @default {
             <app-group-view [title]="c.title!" [description]="c.description ?? null" [icon]="c.icon ?? 'code'"
-                            [segmentIds]="c.segmentIds!" [scope]="c.scope!" />
+                            [slots]="c.slots!" [scope]="c.scope!" [fileView]="store.selection().kind === 'file'" />
           }
         }
       </div>

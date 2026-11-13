@@ -4,9 +4,9 @@ Code-Reviews nach **Bedeutung statt nach Dateien**. SmartCodeReview holt deine o
 
 1. **Quick wins** – höchstwahrscheinlich irrelevante Änderungen (generierter Code, Übersetzungen, DTOs, Mapper, banale REST-Aufrufe, Imports …) zum schnellen Abhaken. Erkannt per Muster, **ohne KI**.
 2. **Datenflüsse** – geänderte Funktionen, die sich gegenseitig aufrufen, in Aufrufreihenfolge: Diagramm oben, Code darunter, die Aufrufstellen sind mit dem aufgerufenen Code verbunden.
-3. **Einzelne Änderungen**, **Tests**, **Styles & Assets**.
+3. **Einzelne Änderungen**, **Tests**, **Styles & Assets**. Jeder geänderte Testfall ist mit dem Code verknüpft, den er (statisch ermittelt) aufruft: welche Komponenten er testet und welche Codestellen er direkt oder indirekt erreicht.
 
-Jede geänderte Zeile kann als **ok** markiert werden, einzeln, als Block, als Gruppe, als Flow oder als ganze Kategorie. Die Markierungen leben **nur lokal** in JSON-Dateien, die auch Agenten lesen und schreiben können. Kommentare gehen **sofort** als Inline-Kommentare an GitHub bzw. GitLab.
+Jede geänderte Zeile kann als **ok** markiert werden, einzeln, als Block, als Gruppe, als Flow oder als ganze Kategorie. Erscheint ein Block an **mehreren Orten** (z. B. als Quick win und in einem Flow, oder in zwei Flows), braucht er an jedem Ort ein eigenes Ok; die Dateiansicht zeigt das pro Zeile und springt zu den Orten. Die Markierungen leben **nur lokal** in JSON-Dateien, die auch Agenten lesen und schreiben können. Kommentare gehen **sofort** als Inline-Kommentare an GitHub bzw. GitLab.
 
 ![Fluss-Ansicht](docs/img/flow.png)
 
@@ -70,6 +70,11 @@ cd frontend && npm start              # UI auf :4200, /api wird an :8080 weiterg
 | Kommentar | Sprechblase im Gutter (nur auf Zeilen im Diff), Ctrl+Enter sendet sofort an GitHub/GitLab |
 | Aufruf folgen | Blaue Chips `→ ② saveEvent` an der Aufrufstelle, «← aufgerufen von …» im Block-Kopf |
 | Erledigtes ausblenden | Toolbar-Knopf (Pfeile): vollständig markierte Blöcke einklappen |
+| Fokussieren | Blocktitel anklicken = ein-/ausklappen; Leiste über jeder Liste: *Einzeln durchgehen* (ein Block nach dem anderen, «Ok & weiter»), *Alle ein-/ausklappen*; im Flow zusätzlich *Erledigte ausblenden* und pro Knoten 👁 ein-/ausblenden bzw. ⌖ «nur dieser Zweig» |
+| Mehrere Orte | Leiste «n Orte» im Block-Kopf (✓ = dort ok, Klick springt hin); in der Dateiansicht kleine Zahl am Häkchen, halb gefülltes Häkchen = an einem Teil der Orte ok |
+| Tests | Kategorie *Tests*: Testübersicht mit Komponenten und abgedeckten Codestellen; im Code-Block «Getestet von …» bzw. «Testet …» |
+
+![Fokus auf einen Zweig des Flows](docs/img/focus.png)
 
 ## Dokumentation
 

@@ -20,6 +20,10 @@
   <div class="total">
     <div class="bar"><div class="fill" [style.width.%]="percent(total)"></div></div>
     <span><b>{{ percent(total) }}%</b> · {{ total.ok }} von {{ total.total }} geänderten Zeilen als ok markiert</span>
+    @if (multiPlaced()) {
+      <span class="multi" title="Diese Blöcke erscheinen in mehreren Kategorien oder Flows und brauchen an jedem Ort ein eigenes Ok">
+        <app-icon name="layers" [size]="12" /> {{ multiPlaced() }} Blöcke an mehreren Orten</span>
+    }
   </div>
 </div>
 
@@ -32,7 +36,7 @@
       <span class="body">
         <span class="label">{{ c.label }}</span>
         <span class="desc">{{ c.description }}</span>
-        <span class="stats">{{ c.groups.length }} {{ c.id === 'flows' ? 'Flows' : 'Gruppen' }} · {{ c.segmentCount }} Blöcke</span>
+        <span class="stats">{{ c.stats }}</span>
       </span>
       <span class="ring" [style.--p]="percent(c.progress)">
         <span>{{ percent(c.progress) }}%</span>

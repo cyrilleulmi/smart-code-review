@@ -5,7 +5,7 @@ import { GroupView } from './group-view';
 import { Icon } from './icon';
 import { Overview } from './overview';
 import { PrList } from './pr-list';
-import { ReviewStore } from './review.store';
+import { ReviewStore, Slot } from './review.store';
 import { ReviewTree } from './review-tree';
 
 type ToolWindow = 'prs' | 'review' | null;
@@ -15,7 +15,7 @@ interface EditorContent {
   title?: string;
   description?: string | null;
   icon?: string;
-  segmentIds?: string[];
+  slots?: Slot[];
   scope?: string;
   crumbs: string[];
 }
@@ -50,15 +50,15 @@ export class App {
         const c = cats.find((x) => x.id === sel.id)!;
         return {
           kind: 'group', title: c.label, description: c.description, icon: c.icon,
-          segmentIds: c.groups.flatMap((g) => g.segmentIds), scope: `category:${c.id}`, crumbs: [c.label],
+          slots: this.store.slotsFor(sel), scope: `category:${c.id}`, crumbs: [c.label],
         };
       }
       case 'group': {
         const c = cats.find((x) => x.groups.some((g) => g.id === sel.id))!;
         const g = c.groups.find((x) => x.id === sel.id)!;
         return {
-          kind: 'group', title: g.label, description: g.description ?? c.description, icon: c.id === 'logic' ? 'file' : c.icon,
-          segmentIds: g.segmentIds, scope: `group:${g.id}`, crumbs: [c.label, g.label],
+          kind: 'group', title: g.label, description: g.description ?? c.description, icon: c.id === 'logic' || c.id === 'tests' ? 'file' : c.icon,
+          slots: this.store.slotsFor(sel), scope: `group:${g.id}`, crumbs: [c.label, g.label],
         };
       }
       case 'flow': {
@@ -66,15 +66,11 @@ export class App {
         return { kind: 'flow', crumbs: ['Datenflüsse', f.title] };
       }
       case 'file': {
-        const ids = b.analysis.segments
-          .filter((s) => s.path === sel.path)
-          .sort((x, y) => (x.startLine ?? lineOf(x.lineKeys[0])) - (y.startLine ?? lineOf(y.lineKeys[0])))
-          .map((s) => s.id);
         const f = b.files.find((x) => x.path === sel.path);
         return {
           kind: 'group', title: sel.path, icon: 'file',
           description: f ? `${statusLabel(f.status)} · +${f.additions} −${f.deletions}` : null,
-          segmentIds: ids, scope: `file:${sel.path}`, crumbs: ['Dateien', ...sel.path.split('/')],
+          slots: this.store.slotsFor(sel), scope: `file:${sel.path}`, crumbs: ['Dateien', ...sel.path.split('/')],
         };
       }
     }
@@ -139,10 +135,6 @@ function readWidth(): number {
   } catch {
     return 330;
   }
-}
-
-function lineOf(key: string | undefined): number {
-  return key ? Number(key.substring(1)) : 0;
 }
 
 function statusLabel(status: string): string {

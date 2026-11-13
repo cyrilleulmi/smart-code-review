@@ -24,9 +24,9 @@
 | `analysis/SymbolExtractor` | Findet Funktionen, Methoden, Klassen, Typen und Top-Level-Konstanten mit Zeilenbereich. |
 | `analysis/FileView` | Neue Dateiversion mit eingewobenen gelöschten Zeilen, um ganze Funktionen mit Diff-Farben zu zeigen. |
 | `analysis/Rules` | Lädt und wertet `rules.json` aus (Pfad-Globs, Zeilenmuster, Symbolarten). |
-| `analysis/Analyzer` | Segmente bilden → klassifizieren → Aufrufkanten finden → Flüsse bauen → Anzeigezeilen rendern. |
+| `analysis/Analyzer` | Segmente bilden → klassifizieren → Aufrufkanten finden → Flüsse bauen (einer pro Einstiegspunkt) → Orte pro Segment → Tests mit dem erreichten Code verknüpfen → Anzeigezeilen rendern. |
 | `store/DataStore` | Datenverzeichnis, atomare JSON-Schreibvorgänge, Pfad-Sicherheit. |
-| `ReviewService` | Orchestriert alles; Snapshot und Analyse werden gecacht, die Analyse wird bei geänderten Regeln oder neuer Analyzer-Version neu berechnet. |
+| `ReviewService` | Orchestriert alles; Snapshot und Analyse werden gecacht, die Analyse wird bei geänderten Regeln oder neuer Analyzer-Version neu berechnet. Markierungen pro Ort (`okAt`) werden zu «überall ok» (`ok`) zusammengeführt, sobald alle Orte einer Zeile ok sind. |
 | `api/ReviewResource` | REST-API (unten). |
 | `model/Model` | Alle Datentypen als Records. Sie sind zugleich das JSON-Format der Dateien und der API. |
 
@@ -46,7 +46,7 @@ Alle PR-Endpunkte unter `/api/prs/{provider}/{owner}/{repo}/{number}`; `provider
 | POST | `…/{number}/reload` | Snapshot neu von GitHub laden und neu analysieren |
 | POST | `…/{number}/reanalyse` | Nur neu analysieren (z. B. nach Änderung an `rules.json`) |
 | GET | `…/{number}/state` | Review-Status (`review.json`) |
-| POST | `…/{number}/marks` | Zeilen markieren: `{"lines":[{"path":"a.ts","key":"N12"}],"ok":true,"scope":"group:quick-wins/übersetzungen","by":"agent:claude"}` |
+| POST | `…/{number}/marks` | Zeilen markieren: `{"lines":[{"path":"a.ts","key":"N12","place":"flows/flow-2"}],"ok":true,"scope":"group:quick-wins/übersetzungen","by":"agent:claude"}`; ohne `place` gilt die Markierung an allen Orten der Zeile |
 | GET | `…/{number}/comments` | Kommentare von GitHub (Inline + allgemein) |
 | POST | `…/{number}/comments` | Kommentar sofort veröffentlichen: inline `{path,line,side,body}` (+ `oldLine`/`newLine` für Kontextzeilen, von GitLab benötigt), Antwort `{inReplyTo,body}`, allgemein `{body}` |
 
@@ -58,14 +58,15 @@ Angular 22, standalone Komponenten, Signals, zoneless, `OnPush`.
 
 | Datei | Aufgabe |
 |---|---|
-| `review.store.ts` | Zentraler Zustand (Signals), Hash-Routing, optimistische Markierungen, Neuladen des Status beim Fokus des Fensters (damit Änderungen von Agenten sofort erscheinen). |
+| `review.store.ts` | Zentraler Zustand (Signals), Hash-Routing, optimistische Markierungen pro Ort («Slots» = Segment an einem Ort), Neuladen des Status beim Fokus des Fensters (damit Änderungen von Agenten sofort erscheinen). |
 | `app.*` | IntelliJ-Shell: Main-Toolbar, Tool-Window-Stripe, verschiebbares Tool-Fenster, Breadcrumbs, Statusleiste, Shortcuts Alt+1/Alt+2. |
 | `pr-list.ts` | Tool-Fenster «Pull Requests» mit Filter und Suche. |
 | `review-tree.*` | Tool-Fenster «Review»: Kategorien / Flows / Dateien als Baum mit Fortschritt und ✓-Aktion. |
 | `overview.*` | PR-Übersicht: Fortschritt, vorgeschlagene Reihenfolge, Beschreibung, allgemeine Kommentare, letzte Markierungen. |
-| `group-view.ts` | Liste von Code-Blöcken (Kategorie, Gruppe, Datei). |
-| `flow-view.*` | Aufrufbaum-Diagramm (SVG) + Code-Blöcke in Aufrufreihenfolge, eingerückt nach Tiefe, mit Verbindungslinien von der Aufrufzeile zum aufgerufenen Block. |
-| `code-block.*` | Ein Segment: Gutter mit Häkchen, alte/neue Zeilennummer, Diff-Farben, Highlighting, Inline-Kommentare, Aufruf-Chips. |
+| `group-view.ts` | Liste von Code-Blöcken (Kategorie, Gruppe, Datei) mit Fokus-Leiste (einzeln durchgehen, alle ein-/ausklappen). |
+| `flow-view.*` | Aufrufbaum-Diagramm (SVG) + Code-Blöcke in Aufrufreihenfolge, eingerückt nach Tiefe, mit Verbindungslinien von der Aufrufzeile zum aufgerufenen Block. Schritte aus-/einblenden, Fokus auf einen Zweig, Erledigte ausblenden, Schritt für Schritt. |
+| `test-overview.ts` | Testübersicht: pro Testfall die Komponenten und die abgedeckten Codestellen (direkt / über …), mit Sprüngen. |
+| `code-block.*` | Ein Segment an einem Ort: Gutter mit Häkchen (ortsbezogen), alte/neue Zeilennummer, Diff-Farben, Highlighting, Inline-Kommentare, Aufruf-Chips, Leiste mit allen Orten und Test-Verknüpfungen, einklappbar. |
 | `highlight.ts` | highlight.js; neue und alte Version werden je als zusammenhängender Text hervorgehoben (korrekt bei mehrzeiligen Kommentaren/Strings) und dann pro Zeile verteilt. |
 
 Build-Ausgabe geht direkt nach `backend/src/main/resources/META-INF/resources`, Quarkus liefert sie aus.

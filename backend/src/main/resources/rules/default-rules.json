@@ -1,10 +1,10 @@
 {
-  "$comment": "SmartCodeReview classification rules. Copy to <dataDir>/rules.json to customise; the app re-analyses when the file changes. Rules are evaluated top to bottom, the first match wins. 'paths' rules classify whole files; 'kinds' rules classify segments by symbol kind (class, interface, type, enum, function, method, component, const); 'lines' rules classify one segment (a changed function, type, hunk, ...) when ALL its changed lines match one of 'lines' (blank lines, braces and comments are always allowed) and, if given, at least one line matches 'require'. 'symbol' optionally restricts the name of the enclosing function/class.",
+  "$comment": "SmartCodeReview classification rules. Copy to <dataDir>/rules.json to customise; the app re-analyses when the file changes. Rules are evaluated top to bottom, the first match wins. 'paths' rules classify whole files; 'kinds' rules classify segments by symbol kind (class, interface, type, enum, function, method, component, const); 'lines' rules classify one segment (a changed function, type, hunk, ...) when ALL its changed lines match one of 'lines' (blank lines, braces and comments are always allowed) and, if given, at least one line matches 'require'. 'symbol' optionally restricts the name of the enclosing function/class. 'symbols': true keeps splitting matched files into functions/test cases (used for tests, so they can be linked to the code they exercise).",
   "categories": [
     { "id": "quick-wins", "label": "Quick wins", "icon": "bolt", "description": "Höchstwahrscheinlich irrelevante oder rein mechanische Änderungen: generierter Code, Übersetzungen, DTOs, Mapper, banale REST-Aufrufe, Imports. Schnell überfliegen und abhaken." },
     { "id": "flows", "label": "Datenflüsse", "icon": "flow", "description": "Geänderte Funktionen, die sich gegenseitig aufrufen – in Aufrufreihenfolge, damit man den Fluss am Stück nachvollziehen kann." },
     { "id": "logic", "label": "Einzelne Änderungen", "icon": "code", "description": "Geänderte Logik ohne erkennbaren Aufrufzusammenhang zu anderen Änderungen." },
-    { "id": "tests", "label": "Tests", "icon": "test", "description": "Test-Code." },
+    { "id": "tests", "label": "Tests", "icon": "test", "description": "Geänderte Tests – mit den Komponenten und Codestellen, die sie (statisch ermittelt) aufrufen." },
     { "id": "styles", "label": "Styles & Assets", "icon": "palette", "description": "CSS, Bilder, Icons und andere Assets." }
   ],
   "rules": [
@@ -20,7 +20,7 @@
     },
     {
       "id": "tests", "category": "tests", "group": "Tests",
-      "reason": "Test-Datei",
+      "reason": "Test-Datei", "symbols": true,
       "paths": ["**/*.spec.*", "**/*.test.*", "**/*_test.go", "**/*_test.py", "**/test_*.py", "**/__tests__/**", "**/test/**", "**/tests/**", "**/e2e/**", "**/*Test.java", "**/*IT.java"]
     },
     {

@@ -102,6 +102,125 @@ class AnalyzerTest {
         assertEquals(8, flow.edges().getFirst().line()); // the call site
     }
 
+    @Test
+    void extractsTestCases() {
+        String spec = """
+                import { PlayerService } from './player.service';
+
+                describe('PlayerService', () => {
+                  let service: PlayerService;
+
+                  beforeEach(() => {
+                    service = new PlayerService();
+                  });
+
+                  it('rejects numbers above 99', () => {
+                    const check = () => service.validateNumber(100);
+                    expect(check).toThrow();
+                  });
+                });
+                """;
+        List<SymbolExtractor.Symbol> ts = SymbolExtractor.extract(CodeText.of(spec), "player.service.spec.ts");
+        SymbolExtractor.Symbol test = ts.stream().filter(s -> s.kind().equals("test")).findFirst().orElseThrow();
+        assertEquals("PlayerService › rejects numbers above 99", test.displayName());
+        assertEquals(10, test.startLine());
+        assertEquals(13, test.endLine());
+        assertTrue(ts.stream().anyMatch(s -> s.kind().equals("setup") && "PlayerService".equals(s.container())));
+        assertTrue(ts.stream().noneMatch(s -> s.name().equals("check")), "helpers inside a test case are no units");
+
+        String java = """
+                class PlayerResourceTest {
+                    @Test
+                    @DisplayName("rejects a taken number")
+                    void rejectsTakenNumber() {
+                        resource.update(1L, request);
+                    }
+
+                    private PlayerUpdateRequest request(int number) {
+                        return new PlayerUpdateRequest(number);
+                    }
+                }
+                """;
+        List<SymbolExtractor.Symbol> js = SymbolExtractor.extract(CodeText.of(java), "PlayerResourceTest.java");
+        assertEquals("test", js.stream().filter(s -> s.name().equals("rejectsTakenNumber")).findFirst().orElseThrow().kind());
+        assertEquals("method", js.stream().filter(s -> s.name().equals("request")).findFirst().orElseThrow().kind());
+
+        String go = "package config\n\nfunc TestLocalConfigDir(t *testing.T) {\n\tLocalConfigDir()\n}\n";
+        assertEquals("test", SymbolExtractor.extract(CodeText.of(go), "config/config_test.go").getFirst().kind());
+    }
+
+    @Test
+    void linksTestsToCodeAndListsAllPlacesOfSharedCode() throws Exception {
+        String service = """
+                export class PlayerService {
+                  validateNumber(n: number): void {
+                    if (n > 99) {
+                      throw new Error('too big');
+                    }
+                    checkRange(n);
+                  }
+
+                  updateNumber(n: number): void {
+                    this.validateNumber(n);
+                    this.store.save(n);
+                  }
+
+                  createPlayer(n: number): void {
+                    this.validateNumber(n);
+                    this.store.add(n);
+                  }
+                }
+
+                export function checkRange(n: number): void {
+                  if (n < 1) {
+                    throw new Error('too small');
+                  }
+                }
+                """;
+        String spec = """
+                import { PlayerService } from './player.service';
+
+                describe('PlayerService', () => {
+                  it('rejects numbers above 99', () => {
+                    const service = new PlayerService();
+                    expect(() => service.updateNumber(100)).toThrow();
+                  });
+                });
+                """;
+        Snapshot snapshot = new Snapshot(1, "now", info(), List.of(
+                added("src/app/player.service.ts", service),
+                added("src/app/player.service.spec.ts", spec)));
+        Analysis analysis = new Analyzer(defaultRules()).analyze(snapshot, Map.of(
+                "src/app/player.service.ts", service,
+                "src/app/player.service.spec.ts", spec));
+
+        Segment validate = segment(analysis, "PlayerService.validateNumber");
+        Segment update = segment(analysis, "PlayerService.updateNumber");
+        Segment range = segment(analysis, "checkRange");
+        Segment test = segment(analysis, "PlayerService › rejects numbers above 99");
+
+        // one flow per entry point; the shared callee is part of both and needs an ok in each
+        assertEquals(2, analysis.flows().size());
+        assertEquals(List.of("flows/flow-1", "flows/flow-2"), validate.places());
+        assertEquals(2, range.places().size());
+        assertEquals(1, update.places().size());
+        assertEquals(List.of("tests/src/app/player.service.spec.ts"), test.places());
+
+        // tests never become part of a flow, but are linked to what they reach
+        assertTrue(analysis.flows().stream().flatMap(f -> f.steps().stream()).noneMatch(s -> s.segmentId().equals(test.id())));
+        Model.TestInfo info = analysis.tests().getFirst();
+        assertEquals(test.id(), info.segmentId());
+        Map<String, Model.TestCoverage> covers = new java.util.HashMap<>();
+        info.covers().forEach(c -> covers.put(c.segmentId(), c));
+        assertTrue(covers.get(update.id()).direct());
+        assertEquals(6, covers.get(update.id()).line());
+        assertEquals(update.id(), covers.get(validate.id()).via());
+        assertEquals(validate.id(), covers.get(range.id()).via());
+        assertEquals("src/app/player.service.ts", info.subjects().getFirst().path());
+        assertEquals("name", info.subjects().getFirst().how());
+        assertEquals(List.of(test.id()), validate.testedBy());
+    }
+
     private static Segment segment(Analysis analysis, String symbol) {
         Segment s = analysis.segments().stream().filter(x -> symbol.equals(x.symbol())).findFirst().orElse(null);
         assertNotNull(s, "segment " + symbol);

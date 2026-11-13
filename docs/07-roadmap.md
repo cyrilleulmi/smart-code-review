@@ -13,7 +13,9 @@ In grober Reihenfolge des Nutzens.
 7. **MCP-Server** (Quarkus-MCP-Extension) mit Tools wie `list_prs`, `get_segments`, `mark_ok`, `comment`, damit Agenten nicht über Dateien oder `curl` gehen müssen.
 8. **Weitere Provider:** Bitbucket, Azure DevOps; mehrere GitLab-Instanzen gleichzeitig. GitHub und GitLab sind umgesetzt (`ReviewProvider`).
 9. **Review abschliessen** aus dem Tool: Approve / Request changes, optional als gesammelter Review statt Einzelkommentare.
-10. Markdown-Rendering für Kommentare und PR-Beschreibung, Light-Theme, Tastaturnavigation (n/p für nächsten Block, o für ok).
+10. **Laufzeit-Coverage** zusätzlich zur statischen Verknüpfung: `lcov.info` / JaCoCo-XML aus dem CI einlesen und pro Zeile «von Tests ausgeführt» zeigen; Aufrufe über HTTP (`given().put("/api/…")`) über die REST-Pfade (Punkt 2) mit Tests verbinden.
+11. **Fokus-Zustand merken** (ausgeblendete Schritte, Position im Schritt-für-Schritt-Modus) pro PR in `review.json`, damit ein Review über mehrere Sitzungen weitergeht.
+12. Markdown-Rendering für Kommentare und PR-Beschreibung, Light-Theme, Tastaturnavigation (n/p für nächsten Block, o für ok).
 
 ## Bekannte Grenzen
 

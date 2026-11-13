@@ -235,6 +235,95 @@
   display: grid;
   place-items: center;
   height: var(--code-line);
+  position: relative;
+}
+
+.check.part {
+  border-color: var(--ok);
+  background: linear-gradient(135deg, var(--ok) 50%, transparent 50%);
+}
+
+.multi {
+  position: absolute;
+  right: -3px;
+  top: 1px;
+  font: 600 8.5px/1 var(--font-ui);
+  color: #e0b46d;
+  cursor: help;
+
+  &.done {
+    color: var(--ok);
+  }
+}
+
+/* ------------------------------------------------------------- places & test links */
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: var(--bg-panel-2);
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px;
+
+  .lbl {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--fg-dim);
+    margin-left: 4px;
+
+    &:first-child {
+      margin-left: 0;
+    }
+  }
+}
+
+.place {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 340px;
+  padding: 1px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-editor);
+  color: var(--fg-muted);
+  font: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--accent);
+    color: var(--fg);
+  }
+
+  &.current {
+    border-color: var(--accent);
+    color: var(--fg);
+    cursor: default;
+  }
+
+  &.done {
+    color: var(--ok);
+  }
+
+  &.indirect {
+    border-style: dashed;
+  }
+
+  &.test {
+    color: #c793e0;
+  }
+}
+
+.fold {
+  color: var(--fg-dim);
+  margin-left: -2px;
 }
 
 .check {

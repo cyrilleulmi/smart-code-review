@@ -178,3 +178,13 @@
     color: #10210f;
   }
 }
+
+.multi {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+  color: #e0b46d;
+  font-size: 10.5px;
+  flex: none;
+}

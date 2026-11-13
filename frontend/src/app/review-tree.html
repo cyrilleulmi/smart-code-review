@@ -34,6 +34,10 @@
       @if (n.hint) {
         <span class="hint">{{ n.hint }}</span>
       }
+      @if (n.multi) {
+        <span class="multi" [title]="n.multi + (n.multi === 1 ? ' Block ist' : ' Blöcke sind') + ' mehreren Orten zugewiesen (je ein Ok nötig)'">
+          <app-icon name="layers" [size]="11" /> {{ n.multi }}</span>
+      }
       <span class="spacer"></span>
       @if (p.total > 0) {
         @if (p.ok === p.total) {

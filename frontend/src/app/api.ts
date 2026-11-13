@@ -121,6 +121,10 @@ export interface Segment {
   reason: string;
   lineKeys: string[];
   lines: DisplayLine[];
+  /** ids of all groups showing this segment ("quick-wins/mapper", "flows/flow-2", ...); each needs its own ok */
+  places: string[];
+  /** test segments that reach this code */
+  testedBy: string[];
 }
 
 export interface Group {
@@ -160,6 +164,28 @@ export interface Flow {
   edges: FlowEdge[];
 }
 
+export interface TestSubject {
+  name: string;
+  path: string | null;
+  inPr: boolean;
+  how: 'name' | 'call';
+}
+
+export interface TestCoverage {
+  segmentId: string;
+  direct: boolean;
+  via: string | null;
+  line: number | null;
+}
+
+export interface TestInfo {
+  segmentId: string;
+  name: string;
+  path: string;
+  subjects: TestSubject[];
+  covers: TestCoverage[];
+}
+
 export interface Analysis {
   schemaVersion: number;
   generatedAt: string;
@@ -168,6 +194,7 @@ export interface Analysis {
   segments: Segment[];
   categories: Category[];
   flows: Flow[];
+  tests: TestInfo[];
 }
 
 export interface LogEntry {
@@ -184,6 +211,8 @@ export interface ReviewState {
   headSha: string | null;
   ok: Record<string, string[]>;
   log: LogEntry[];
+  /** place -> path -> keys that are ok at that place only */
+  okAt: Record<string, Record<string, string[]>>;
 }
 
 export interface FileSummary {
@@ -233,6 +262,8 @@ export interface NewComment {
 export interface LineMark {
   path: string;
   key: string;
+  /** group id the mark applies to; null = all places of the line */
+  place: string | null;
 }
 
 export interface PrKey {

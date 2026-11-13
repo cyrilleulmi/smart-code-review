@@ -21,11 +21,22 @@ export class Overview {
   protected readonly categories = computed(() =>
     this.store.bundle()!.analysis.categories.map((c) => {
       const ids = c.groups.flatMap((g) => g.segmentIds);
-      return { ...c, segmentCount: new Set(ids).size, progress: this.store.progressOf(ids) };
+      const tests = c.id === 'tests' ? this.store.bundle()!.analysis.tests ?? [] : [];
+      const covered = new Set(tests.flatMap((t) => t.covers.map((x) => x.segmentId))).size;
+      return {
+        ...c,
+        segmentCount: new Set(ids).size,
+        progress: this.store.progressOf(this.store.slotsFor({ kind: 'category', id: c.id })),
+        stats: c.id === 'tests' && tests.length
+          ? `${tests.length} Testfälle · erreichen ${covered} geänderte Codestellen`
+          : `${c.groups.length} ${c.id === 'flows' ? 'Flows' : 'Gruppen'} · ${new Set(ids).size} Blöcke`,
+      };
     }),
   );
   protected readonly generalComments = computed(() => this.store.comments().filter((c) => c.kind === 'issue'));
   protected readonly inlineCount = computed(() => this.store.comments().filter((c) => c.kind === 'review').length);
+  /** Blocks that need more than one ok (shown at several places). */
+  protected readonly multiPlaced = computed(() => this.store.bundle()!.analysis.segments.filter((s) => (s.places?.length ?? 0) > 1).length);
   protected readonly log = computed(() => [...this.store.log()].reverse().slice(0, 6));
 
   protected percent(p: { ok: number; total: number }): number {

@@ -11,6 +11,7 @@ import {
   ReviewBundle,
   ReviewState,
   Segment,
+  TestInfo,
   errorMessage,
   prLabel,
   providerInfo,
@@ -30,6 +31,23 @@ export interface Progress {
   total: number;
 }
 
+/**
+ * A segment as shown at one place (group id such as "quick-wins/mapper" or "flows/flow-2"). place null means
+ * "everywhere" (file view, totals): a line only counts as ok there when it is ok at all its places.
+ */
+export interface Slot {
+  segmentId: string;
+  place: string | null;
+}
+
+export interface PlaceInfo {
+  id: string;
+  /** e.g. "Quick wins › Mapper", "Flow: update → validate" */
+  label: string;
+  categoryId: string;
+  selection: Selection;
+}
+
 const SEP = '\u0000';
 
 /** Central UI state (signals). Marks are applied optimistically and confirmed by the backend. */
@@ -45,11 +63,16 @@ export class ReviewStore {
   readonly loading = signal<string | null>(null);
   readonly error = signal<string | null>(null);
   readonly toast = signal<string | null>(null);
+  /** lines ok at all their places ("path\0key") */
   readonly ok = signal<ReadonlySet<string>>(new Set());
+  /** place -> lines ok at that place only */
+  readonly okAt = signal<ReadonlyMap<string, ReadonlySet<string>>>(new Map());
   readonly comments = signal<Comment[]>([]);
   readonly log = signal<LogEntry[]>([]);
   readonly selection = signal<Selection>({ kind: 'overview' });
   readonly collapseDone = signal(true);
+  /** "Collapse all" / "expand all" of the current view; code blocks follow it. Reset on navigation. */
+  readonly collapseCommand = signal<{ collapsed: boolean; seq: number } | null>(null);
   /** Segment to scroll to after the next render (e.g. clicked in a flow diagram). */
   readonly focusSegment = signal<string | null>(null);
 
@@ -69,12 +92,46 @@ export class ReviewStore {
     return map;
   });
 
+  /** "path\0key" -> places of the line (= places of its segment) */
+  private readonly linePlaces = computed(() => {
+    const map = new Map<string, string[]>();
+    for (const s of this.bundle()?.analysis.segments ?? []) {
+      for (const k of s.lineKeys) {
+        map.set(s.path + SEP + k, s.places ?? []);
+      }
+    }
+    return map;
+  });
+
+  /** All places (groups) by id, with a readable label and where to navigate. */
+  readonly places = computed(() => {
+    const map = new Map<string, PlaceInfo>();
+    for (const c of this.bundle()?.analysis.categories ?? []) {
+      for (const g of c.groups) {
+        const fileGroup = c.id === 'logic' || c.id === 'tests';
+        const label = g.flowId ? `Flow: ${g.label}` : `${c.label} › ${fileGroup ? g.label.substring(g.label.lastIndexOf('/') + 1) : g.label}`;
+        const selection: Selection = g.flowId ? { kind: 'flow', id: g.flowId } : { kind: 'group', id: g.id };
+        map.set(g.id, { id: g.id, label, categoryId: c.id, selection });
+      }
+    }
+    return map;
+  });
+
+  /** Test infos by test segment id. */
+  readonly tests = computed(() => {
+    const map = new Map<string, TestInfo>();
+    for (const t of this.bundle()?.analysis.tests ?? []) {
+      map.set(t.segmentId, t);
+    }
+    return map;
+  });
+
   readonly filteredPrs = computed(() => {
     const f = this.prFilter();
     return f === 'all' ? this.prs() : this.prs().filter((p) => p.roles.includes(f));
   });
 
-  readonly totalProgress = computed(() => this.progressOf([...this.segments().keys()]));
+  readonly totalProgress = computed(() => this.progressOf(this.slotsFor({ kind: 'overview' })));
 
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -166,6 +223,7 @@ export class ReviewStore {
     this.bundle.set(null);
     this.comments.set([]);
     this.ok.set(new Set());
+    this.okAt.set(new Map());
     history.replaceState(null, '', location.pathname);
   }
 
@@ -192,52 +250,116 @@ export class ReviewStore {
     }
   }
 
+  setCollapsedAll(collapsed: boolean): void {
+    this.collapseCommand.set({ collapsed, seq: (this.collapseCommand()?.seq ?? 0) + 1 });
+  }
+
   select(selection: Selection): void {
     this.selection.set(selection);
+    this.collapseCommand.set(null);
     const key = this.prKey();
     if (key) {
       history.replaceState(null, '', '#' + formatHash(key, selection));
     }
   }
 
-  /** Navigates to a segment: its flow if it is part of one, otherwise its file. */
+  /** Navigates to a segment at another place than the current one (its first place, else its file). */
   reveal(segmentId: string): void {
-    const b = this.bundle();
     const seg = this.segments().get(segmentId);
-    if (!b || !seg) {
+    if (!seg) {
       return;
     }
-    const current = this.selection();
-    const flows = b.analysis.flows.filter((f) => f.steps.some((s) => s.segmentId === segmentId));
-    const flow = flows.find((f) => !(current.kind === 'flow' && current.id === f.id)) ?? flows[0];
-    this.focusSegment.set(segmentId);
-    this.select(flow ? { kind: 'flow', id: flow.id } : { kind: 'file', path: seg.path });
+    const current = this.currentPlace();
+    const place = seg.places.find((p) => p !== current) ?? seg.places[0];
+    if (place) {
+      this.goToPlace(place, segmentId);
+    } else {
+      this.focusSegment.set(segmentId);
+      this.select({ kind: 'file', path: seg.path });
+    }
+  }
+
+  goToPlace(place: string, segmentId: string): void {
+    const info = this.places().get(place);
+    if (info) {
+      this.focusSegment.set(segmentId);
+      this.select(info.selection);
+    }
+  }
+
+  /** The place (group id) the editor currently shows, if it shows exactly one group or flow. */
+  currentPlace(): string | null {
+    const sel = this.selection();
+    if (sel.kind === 'group') return sel.id;
+    if (sel.kind === 'flow') return 'flows/' + sel.id;
+    return null;
+  }
+
+  /** The segments a selection shows, each at the place it is shown at. */
+  slotsFor(sel: Selection): Slot[] {
+    const b = this.bundle();
+    if (!b) return [];
+    const cats = b.analysis.categories;
+    const groupSlots = (groups: { id: string; segmentIds: string[] }[]) =>
+      groups.flatMap((g) => g.segmentIds.map((segmentId) => ({ segmentId, place: g.id })));
+    switch (sel.kind) {
+      case 'overview':
+        return b.analysis.segments.map((s) => ({ segmentId: s.id, place: null }));
+      case 'category':
+        return groupSlots(cats.find((c) => c.id === sel.id)?.groups ?? []);
+      case 'group':
+        return groupSlots(cats.flatMap((c) => c.groups).filter((g) => g.id === sel.id));
+      case 'flow':
+        return groupSlots(cats.flatMap((c) => c.groups).filter((g) => g.flowId === sel.id));
+      case 'file':
+        return b.analysis.segments
+          .filter((s) => s.path === sel.path)
+          .sort((x, y) => (x.startLine ?? lineOf(x.lineKeys[0])) - (y.startLine ?? lineOf(y.lineKeys[0])))
+          .map((s) => ({ segmentId: s.id, place: null }));
+    }
   }
 
   // ------------------------------------------------------------- marks
 
-  isOk(path: string, key: string): boolean {
-    return this.ok().has(path + SEP + key);
+  /** Is the line ok at this place? place null: ok at all its places. */
+  isOkAt(path: string, key: string, place: string | null): boolean {
+    const k = path + SEP + key;
+    if (this.ok().has(k)) {
+      return true;
+    }
+    const places = this.linePlaces().get(k) ?? [];
+    if (place == null || !places.includes(place)) {
+      return places.length > 1 && places.every((p) => this.okAt().get(p)?.has(k));
+    }
+    return places.length > 1 && !!this.okAt().get(place)?.has(k);
   }
 
-  progressOf(segmentIds: Iterable<string>): Progress {
-    const ok = this.ok();
+  /** How many of the line's places are ok (for lines shown at several places). */
+  okCount(path: string, key: string): { ok: number; of: number } {
+    const k = path + SEP + key;
+    const places = this.linePlaces().get(k) ?? [];
+    if (this.ok().has(k)) {
+      return { ok: places.length, of: places.length };
+    }
+    return { ok: places.filter((p) => this.okAt().get(p)?.has(k)).length, of: places.length };
+  }
+
+  /** Lines of the slots; every slot (segment at a place) counts on its own. */
+  progressOf(slots: Iterable<Slot>): Progress {
     const segs = this.segments();
     let total = 0;
     let done = 0;
     const seen = new Set<string>();
-    for (const id of segmentIds) {
-      if (seen.has(id)) {
+    for (const slot of slots) {
+      const id = slot.segmentId + SEP + slot.place;
+      const s = segs.get(slot.segmentId);
+      if (seen.has(id) || !s) {
         continue;
       }
       seen.add(id);
-      const s = segs.get(id);
-      if (!s) {
-        continue;
-      }
       total += s.lineKeys.length;
       for (const k of s.lineKeys) {
-        if (ok.has(s.path + SEP + k)) {
+        if (this.isOkAt(s.path, k, slot.place)) {
           done++;
         }
       }
@@ -245,15 +367,18 @@ export class ReviewStore {
     return { ok: done, total };
   }
 
-  linesOf(segmentIds: Iterable<string>): LineMark[] {
+  linesOf(slots: Iterable<Slot>): LineMark[] {
     const segs = this.segments();
     const result: LineMark[] = [];
-    for (const id of new Set(segmentIds)) {
-      const s = segs.get(id);
-      if (s) {
-        for (const key of s.lineKeys) {
-          result.push({ path: s.path, key });
-        }
+    const seen = new Set<string>();
+    for (const slot of slots) {
+      const s = segs.get(slot.segmentId);
+      if (!s || seen.has(slot.segmentId + SEP + slot.place)) {
+        continue;
+      }
+      seen.add(slot.segmentId + SEP + slot.place);
+      for (const key of s.lineKeys) {
+        result.push({ path: s.path, key, place: slot.place });
       }
     }
     return result;
@@ -261,25 +386,45 @@ export class ReviewStore {
 
   /** Marks the lines as ok, or - if all of them already are - removes the mark (toggle). */
   toggle(lines: LineMark[], scope: string): void {
-    const allOk = lines.length > 0 && lines.every((l) => this.isOk(l.path, l.key));
+    const allOk = lines.length > 0 && lines.every((l) => this.isOkAt(l.path, l.key, l.place));
     this.mark(lines, !allOk, scope);
   }
 
+  /** Optimistic version of the backend logic (ReviewService.mark): one ok per place, then "ok everywhere". */
   mark(lines: LineMark[], ok: boolean, scope: string): void {
     const key = this.prKey();
     if (!key || lines.length === 0) {
       return;
     }
-    const next = new Set(this.ok());
+    const full = new Set(this.ok());
+    const at = new Map([...this.okAt()].map(([p, set]) => [p, new Set(set)]));
+    const atSet = (p: string) => at.get(p) ?? at.set(p, new Set()).get(p)!;
     for (const l of lines) {
       const k = l.path + SEP + l.key;
-      if (ok) {
-        next.add(k);
+      const places = this.linePlaces().get(k) ?? [];
+      if (l.place == null || places.length <= 1 || !places.includes(l.place)) {
+        ok ? full.add(k) : full.delete(k);
+        places.forEach((p) => at.get(p)?.delete(k));
+        continue;
+      }
+      if (full.has(k) && ok) {
+        continue;
+      }
+      if (full.has(k)) {
+        full.delete(k);
+        places.filter((p) => p !== l.place).forEach((p) => atSet(p).add(k));
+      } else if (ok) {
+        atSet(l.place).add(k);
       } else {
-        next.delete(k);
+        at.get(l.place)?.delete(k);
+      }
+      if (places.every((p) => at.get(p)?.has(k))) {
+        full.add(k);
+        places.forEach((p) => at.get(p)?.delete(k));
       }
     }
-    this.ok.set(next);
+    this.ok.set(full);
+    this.okAt.set(at);
     this.api.mark(key, lines, ok, scope).subscribe({
       next: (state) => this.applyState(state),
       error: (e) => {
@@ -304,7 +449,16 @@ export class ReviewStore {
         set.add(path + SEP + k);
       }
     }
+    const at = new Map<string, Set<string>>();
+    for (const [place, byPath] of Object.entries(state.okAt ?? {})) {
+      const keys = new Set<string>();
+      for (const [path, list] of Object.entries(byPath)) {
+        list.forEach((k) => keys.add(path + SEP + k));
+      }
+      at.set(place, keys);
+    }
     this.ok.set(set);
+    this.okAt.set(at);
     this.log.set(state.log ?? []);
   }
 
@@ -340,6 +494,10 @@ export class ReviewStore {
     clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => this.toast.set(null), 2600);
   }
+}
+
+function lineOf(key: string | undefined): number {
+  return key ? Number(key.substring(1)) : 0;
 }
 
 // ------------------------------------------------------------- hash routing: #/github/owner/repo/12/flow/flow-1

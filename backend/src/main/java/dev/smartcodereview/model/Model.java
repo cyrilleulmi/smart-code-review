@@ -103,12 +103,15 @@ public final class Model {
     /**
      * The unit of review: a coherent piece of a change (a hunk, a changed function, ...).
      * kind: hunk | symbol | module. lineKeys: the changed lines this segment owns (markable).
+     * places: ids of all groups that show this segment (e.g. "quick-wins/mapper", "flows/flow-2"); every
+     * place needs its own "ok" (see ReviewState.okAt). testedBy: ids of test segments that reach this one.
      */
     @RegisterForReflection
     public record Segment(String id, String path, String language, String kind,
                           String symbol, String symbolKind, Integer startLine, Integer endLine,
                           String category, String group, String ruleId, String reason,
-                          List<String> lineKeys, List<DisplayLine> lines) {
+                          List<String> lineKeys, List<DisplayLine> lines,
+                          List<String> places, List<String> testedBy) {
     }
 
     @RegisterForReflection
@@ -133,9 +136,32 @@ public final class Model {
     public record Flow(String id, String title, List<FlowStep> steps, List<FlowEdge> edges) {
     }
 
+    /**
+     * A component a test is about. how: "name" (naming convention, e.g. PlayerResourceTest -> PlayerResource)
+     * or "call" (the test calls changed code in it). path is null when no file of the PR matches.
+     */
+    @RegisterForReflection
+    public record TestSubject(String name, String path, boolean inPr, String how) {
+    }
+
+    /**
+     * Changed code reached from a test. direct: called by the test (or its helpers); otherwise reached via
+     * the changed segment `via`. line: call site in the test (new-file line) that leads there.
+     */
+    @RegisterForReflection
+    public record TestCoverage(String segmentId, boolean direct, String via, Integer line) {
+    }
+
+    /** One changed test case (it/test block, @Test method, Go TestXxx) and what it exercises - found statically. */
+    @RegisterForReflection
+    public record TestInfo(String segmentId, String name, String path, List<TestSubject> subjects,
+                           List<TestCoverage> covers) {
+    }
+
     @RegisterForReflection
     public record Analysis(int schemaVersion, String generatedAt, String headSha, String rulesHash,
-                           List<Segment> segments, List<Category> categories, List<Flow> flows) {
+                           List<Segment> segments, List<Category> categories, List<Flow> flows,
+                           List<TestInfo> tests) {
     }
 
     // ---------------------------------------------------------------- local review state
@@ -144,14 +170,20 @@ public final class Model {
     public record LogEntry(String at, String by, String action, String scope, int count) {
     }
 
-    /** ok: path -> sorted list of line keys marked as "ok". Lives only locally. */
+    /**
+     * ok: path -> sorted line keys that are "ok" everywhere (at all places of the line). okAt: place ->
+     * path -> line keys that are ok at that place only (lines shown at several places need one ok per
+     * place; once all places are ok the line moves to ok). Lives only locally.
+     */
     @RegisterForReflection
     public record ReviewState(int schemaVersion, String pr, String headSha,
-                              Map<String, List<String>> ok, List<LogEntry> log) {
+                              Map<String, List<String>> ok, List<LogEntry> log,
+                              Map<String, Map<String, List<String>>> okAt) {
     }
 
+    /** place: the group id the mark applies to; null = at all places of the line. */
     @RegisterForReflection
-    public record LineMark(String path, String key) {
+    public record LineMark(String path, String key, String place) {
     }
 
     /** scope is free text for the log, e.g. "group:quick-wins/translations" or "line". by: "ui" or "agent:<name>". */

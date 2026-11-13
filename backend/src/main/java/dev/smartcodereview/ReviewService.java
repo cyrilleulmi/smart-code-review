@@ -42,9 +42,11 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HexFormat;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
@@ -175,6 +177,16 @@ public class ReviewService {
     private Analysis analyse(PrRef ref, Snapshot snapshot) {
         Map<String, String> sources = new HashMap<>();
         Path sourcesDir = store.sourcesDir(ref);
+        // snapshots from older versions lack sources that newer rules want (e.g. test files): fetch them once
+        List<DiffFile> missing = wantedSources(snapshot, rules()).stream()
+                .filter(f -> !Files.exists(DataStore.resolveInside(sourcesDir, f.path()))).toList();
+        if (!missing.isEmpty()) {
+            try {
+                fetchSources(ref, snapshot, missing);
+            } catch (ProviderException e) {
+                Log.warnf("Could not fetch missing sources of %s: %s", ref.key(), e.getMessage());
+            }
+        }
         for (DiffFile f : snapshot.files()) {
             store.readText(DataStore.resolveInside(sourcesDir, f.path())).ifPresent(s -> sources.put(f.path(), s));
         }
@@ -187,14 +199,28 @@ public class ReviewService {
     }
 
     private Snapshot fetch(PrRef ref) {
-        ReviewProvider provider = provider(ref.provider());
-        Snapshot snapshot = provider.fetchSnapshot(ref);
-        Rules rules = rules();
-        Path sourcesDir = store.sourcesDir(ref);
-        List<DiffFile> wanted = snapshot.files().stream()
-                .filter(f -> !"removed".equals(f.status()) && !f.patchMissing() && Languages.hasSymbols(f.language())
-                        && rules.forPath(f.path()) == null)
+        Snapshot snapshot = provider(ref.provider()).fetchSnapshot(ref);
+        List<DiffFile> wanted = wantedSources(snapshot, rules());
+        fetchSources(ref, snapshot, wanted);
+        store.write(snapshotFile(ref), snapshot);
+        Log.infof("Fetched %s: %d files, %d sources", ref.key(), snapshot.files().size(), wanted.size());
+        return snapshot;
+    }
+
+    /** Files whose new version is needed to find functions: code files without a path rule, or with `symbols: true`. */
+    private static List<DiffFile> wantedSources(Snapshot snapshot, Rules rules) {
+        return snapshot.files().stream()
+                .filter(f -> {
+                    Rules.Rule r = rules.forPath(f.path());
+                    return !"removed".equals(f.status()) && !f.patchMissing() && Languages.hasSymbols(f.language())
+                            && (r == null || r.symbols());
+                })
                 .toList();
+    }
+
+    private void fetchSources(PrRef ref, Snapshot snapshot, List<DiffFile> wanted) {
+        ReviewProvider provider = provider(ref.provider());
+        Path sourcesDir = store.sourcesDir(ref);
         Semaphore limit = new Semaphore(8);
         try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
             List<Future<?>> tasks = new ArrayList<>();
@@ -217,40 +243,84 @@ public class ReviewService {
                 }
             }
         }
-        store.write(snapshotFile(ref), snapshot);
-        Log.infof("Fetched %s: %d files, %d sources", ref.key(), snapshot.files().size(), wanted.size());
-        return snapshot;
     }
 
     // ------------------------------------------------------------------ marks
 
     public ReviewState state(PrRef ref) {
-        return store.read(stateFile(ref), ReviewState.class).orElseGet(() -> {
-            String headSha = store.read(snapshotFile(ref), Snapshot.class).map(s -> s.pr().headSha()).orElse(null);
-            return new ReviewState(Model.SCHEMA_VERSION, ref.key(), headSha, new TreeMap<>(), new ArrayList<>());
-        });
+        return store.read(stateFile(ref), ReviewState.class)
+                .map(s -> s.okAt() != null && s.ok() != null && s.log() != null ? s
+                        : new ReviewState(s.schemaVersion(), s.pr(), s.headSha(), s.ok() == null ? Map.of() : s.ok(),
+                        s.log() == null ? List.of() : s.log(), s.okAt() == null ? Map.of() : s.okAt()))
+                .orElseGet(() -> {
+                    String headSha = store.read(snapshotFile(ref), Snapshot.class).map(s -> s.pr().headSha()).orElse(null);
+                    return new ReviewState(Model.SCHEMA_VERSION, ref.key(), headSha, new TreeMap<>(), new ArrayList<>(), new TreeMap<>());
+                });
     }
 
+    /**
+     * Applies marks. A line shown at several places (e.g. in a quick-win group and in two flows) needs an ok at
+     * each place: marks with a place go to okAt[place] until all places are ok, then the line moves to ok.
+     * Marks without a place (file view, agents) apply to all places at once.
+     */
     public ReviewState mark(PrRef ref, MarkRequest req) {
         synchronized (lock(ref)) {
             ReviewState current = state(ref);
-            Map<String, TreeSet<String>> ok = new TreeMap<>();
-            current.ok().forEach((path, keys) -> {
-                TreeSet<String> set = new TreeSet<>(LINE_KEY_ORDER);
-                set.addAll(keys);
-                ok.put(path, set);
-            });
+            Map<String, List<String>> placesByLine = placesByLine(ref);
+            Map<String, Set<String>> ok = new TreeMap<>();
+            current.ok().forEach((path, keys) -> ok.put(path, new TreeSet<>(keys)));
+            Map<String, Map<String, Set<String>>> okAt = new TreeMap<>();
+            current.okAt().forEach((place, byPath) -> byPath.forEach((path, keys) ->
+                    okAt.computeIfAbsent(place, k -> new TreeMap<>()).computeIfAbsent(path, k -> new TreeSet<>()).addAll(keys)));
+
             int changed = 0;
             for (LineMark m : req.lines()) {
-                TreeSet<String> keys = ok.computeIfAbsent(m.path(), p -> new TreeSet<>(LINE_KEY_ORDER));
-                changed += (req.ok() ? keys.add(m.key()) : keys.remove(m.key())) ? 1 : 0;
+                List<String> places = placesByLine.getOrDefault(m.path() + "\u0000" + m.key(), List.of());
+                Set<String> full = ok.computeIfAbsent(m.path(), p -> new TreeSet<>());
+                boolean wasFull = full.contains(m.key());
+                boolean single = m.place() == null || places.size() <= 1 || !places.contains(m.place());
+                if (single) {
+                    if (req.ok()) {
+                        full.add(m.key());
+                    } else {
+                        full.remove(m.key());
+                    }
+                    places.forEach(p -> removeAt(okAt, p, m.path(), m.key()));
+                    changed += wasFull != req.ok() ? 1 : 0;
+                    continue;
+                }
+                boolean wasAt = wasFull || containsAt(okAt, m.place(), m.path(), m.key());
+                if (wasFull && req.ok()) {
+                    continue; // already ok everywhere
+                }
+                if (wasFull) { // ok everywhere -> ok everywhere except here
+                    full.remove(m.key());
+                    places.stream().filter(p -> !p.equals(m.place()))
+                            .forEach(p -> okAt.computeIfAbsent(p, k -> new TreeMap<>()).computeIfAbsent(m.path(), k -> new TreeSet<>()).add(m.key()));
+                } else if (req.ok()) {
+                    okAt.computeIfAbsent(m.place(), k -> new TreeMap<>()).computeIfAbsent(m.path(), k -> new TreeSet<>()).add(m.key());
+                } else {
+                    removeAt(okAt, m.place(), m.path(), m.key());
+                }
+                if (places.stream().allMatch(p -> containsAt(okAt, p, m.path(), m.key()))) {
+                    full.add(m.key());
+                    places.forEach(p -> removeAt(okAt, p, m.path(), m.key()));
+                }
+                changed += wasAt != req.ok() ? 1 : 0;
             }
+
             Map<String, List<String>> out = new TreeMap<>();
             ok.forEach((path, keys) -> {
                 if (!keys.isEmpty()) {
-                    out.put(path, List.copyOf(keys));
+                    out.put(path, sortedKeys(keys));
                 }
             });
+            Map<String, Map<String, List<String>>> outAt = new TreeMap<>();
+            okAt.forEach((place, byPath) -> byPath.forEach((path, keys) -> {
+                if (!keys.isEmpty()) {
+                    outAt.computeIfAbsent(place, k -> new TreeMap<>()).put(path, sortedKeys(keys));
+                }
+            }));
             List<LogEntry> log = new ArrayList<>(current.log());
             log.add(new LogEntry(Instant.now().toString(), req.by() == null ? "ui" : req.by(), req.ok() ? "ok" : "unok",
                     req.scope() == null ? "lines" : req.scope(), changed));
@@ -259,10 +329,37 @@ public class ReviewService {
             }
             String headSha = current.headSha() != null ? current.headSha()
                     : store.read(snapshotFile(ref), Snapshot.class).map(s -> s.pr().headSha()).orElse(null);
-            ReviewState next = new ReviewState(Model.SCHEMA_VERSION, ref.key(), headSha, out, log);
+            ReviewState next = new ReviewState(Model.SCHEMA_VERSION, ref.key(), headSha, out, log, outAt);
             store.write(stateFile(ref), next);
             return next;
         }
+    }
+
+    /** "path\0key" -> places of the segment that owns the line (from the current analysis). */
+    private Map<String, List<String>> placesByLine(PrRef ref) {
+        Map<String, List<String>> result = new HashMap<>();
+        store.read(analysisFile(ref), Analysis.class).ifPresent(a -> {
+            for (Segment s : a.segments()) {
+                List<String> places = s.places() == null ? List.of() : s.places();
+                s.lineKeys().forEach(k -> result.put(s.path() + "\u0000" + k, places));
+            }
+        });
+        return result;
+    }
+
+    private static boolean containsAt(Map<String, Map<String, Set<String>>> okAt, String place, String path, String key) {
+        return okAt.getOrDefault(place, Map.of()).getOrDefault(path, Set.of()).contains(key);
+    }
+
+    private static void removeAt(Map<String, Map<String, Set<String>>> okAt, String place, String path, String key) {
+        Map<String, Set<String>> byPath = okAt.get(place);
+        if (byPath != null && byPath.containsKey(path)) {
+            byPath.get(path).remove(key);
+        }
+    }
+
+    private static List<String> sortedKeys(Set<String> keys) {
+        return keys.stream().sorted(LINE_KEY_ORDER).toList();
     }
 
     /** N12 before N100, O-lines after N-lines. */
@@ -285,10 +382,13 @@ public class ReviewService {
         ReviewState st = state(ref);
         int total = 0, ok = 0;
         for (Segment s : analysis.get().segments()) {
-            List<String> marked = st.ok().getOrDefault(s.path(), List.of());
+            Set<String> marked = new LinkedHashSet<>(st.ok().getOrDefault(s.path(), List.of()));
+            List<String> places = s.places() == null ? List.of() : s.places();
             for (String key : s.lineKeys()) {
                 total++;
-                if (marked.contains(key)) {
+                boolean everywhere = !places.isEmpty() && places.stream()
+                        .allMatch(p -> st.okAt().getOrDefault(p, Map.of()).getOrDefault(s.path(), List.of()).contains(key));
+                if (marked.contains(key) || everywhere) {
                     ok++;
                 }
             }

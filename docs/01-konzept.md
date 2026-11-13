@@ -35,6 +35,7 @@ Ein lokal startbares Werkzeug, das
 | Test-PRs | In `spongecoach`, `camperquiz` und `stv-bero-website`, als Draft, klar mit **[TEST-MR]** markiert |
 | GitLab (Nachtrag 13.11.2026) | Zweiter Provider neben GitHub: gitlab.com und self-managed, Merge Requests werden wie Pull Requests behandelt |
 | Verteilung | Natives Image auf Docker Hub: `culmi/smart-code-review` |
+| Tests und mehrfache Zuordnung (Nachtrag 13.11.2026) | Tests werden mit dem getesteten Code verknüpft (Komponenten + abgedeckte Codestellen). Eine Zeile kann in mehreren Kategorien/Flows sein und braucht dann pro Ort ein Ok; die Dateiansicht zeigt die Orte mit Sprüngen. Flows und Listen lassen sich teilweise aus- und einblenden bzw. einzeln durchgehen. |
 
 ## Kernbegriffe
 
@@ -44,4 +45,6 @@ Ein lokal startbares Werkzeug, das
 | **Segment** | Kleinste Review-Einheit: eine geänderte Funktion/Methode, ein geänderter Typ, eine Konstante, oder ein Hunk, wenn keine Struktur erkennbar ist. |
 | **Kategorie / Gruppe** | Quick wins (mit Gruppen wie «Übersetzungen», «DTOs & Typen»), Datenflüsse, Einzelne Änderungen, Tests, Styles & Assets. |
 | **Flow** | Zusammenhängende Segmente, die sich gegenseitig aufrufen, geordnet ab dem Einstiegspunkt. |
-| **Markierung (ok)** | Pro geänderter Zeile (`N12` = neue Zeile 12, `O7` = gelöschte alte Zeile 7), lokal gespeichert. |
+| **Ort** | Eine Gruppe, die einen Block zeigt (z. B. `quick-wins/mapper`, `flows/flow-2`). Ein Block kann mehrere Orte haben. |
+| **Markierung (ok)** | Pro geänderter Zeile (`N12` = neue Zeile 12, `O7` = gelöschte alte Zeile 7) **und Ort**, lokal gespeichert. Ok an allen Orten = ok. |
+| **Testfall** | Ein `it(…)`/`test(…)`-Block, eine `@Test`-Methode oder ein Go-`TestXxx`; verknüpft mit den geänderten Codestellen, die er aufruft. |

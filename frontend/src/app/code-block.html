@@ -1,5 +1,6 @@
 @let seg = segment();
-<header class="head" (click)="headerClick()" [class.clickable]="allOk()">
+<header class="head clickable" (click)="toggleCollapsed($event)" [title]="collapsed() ? 'Ausklappen' : 'Einklappen'">
+  <app-icon [name]="collapsed() ? 'chevronRight' : 'chevronDown'" [size]="12" class="fold" />
   @if (step(); as n) {
     <span class="step-no">{{ n }}</span>
   }
@@ -11,7 +12,7 @@
   @if (seg.startLine) {
     <span class="lines">:{{ seg.startLine }}</span>
   }
-  <span class="chip" [class]="'chip cat-' + seg.category" [title]="seg.reason">{{ seg.category === 'logic' ? 'Logik' : seg.group }}</span>
+  <span class="chip" [class]="'chip cat-' + seg.category" [title]="seg.reason">{{ seg.category === 'logic' ? 'Logik' : seg.category === 'tests' ? (seg.symbolKind === 'test' ? 'Testfall' : 'Test') : seg.group }}</span>
   @if (calledBy(); as by) {
     <button class="called-by" type="button" (click)="$event.stopPropagation(); calledByClick.emit()">
       <app-icon name="arrowLeft" [size]="12" /> {{ by }}
@@ -23,10 +24,38 @@
   }
   <span class="count" [class.complete]="allOk()">{{ progress().ok }}/{{ progress().total }}</span>
   <button type="button" class="ok-btn" [class.on]="allOk()" (click)="toggleBlock($event)"
-          [title]="allOk() ? 'Markierung entfernen' : 'Ganzen Block als ok markieren'">
+          [title]="allOk() ? 'Markierung entfernen' : place() || places().length === 0 ? 'Ganzen Block als ok markieren' : 'Block an allen ' + places().length + ' Orten als ok markieren'">
     <app-icon name="check" [size]="14" /> {{ allOk() ? 'Ok' : 'Block ok' }}
   </button>
 </header>
+
+@if (places().length || covers().length || testedBy().length) {
+  <div class="links">
+    @if (places().length) {
+      <span class="lbl" title="Dieser Block erscheint an mehreren Orten; jeder Ort braucht ein eigenes Ok">
+        <app-icon name="layers" [size]="12" /> {{ places().length }} Orte:</span>
+      @for (p of places(); track p.id) {
+        <button type="button" class="place" [class.current]="p.current" [class.done]="p.done" (click)="goPlace(p.id, $event)"
+                [title]="p.current ? 'Hier' : 'Dorthin springen'">
+          <app-icon [name]="p.done ? 'check' : 'circle'" [size]="11" /> {{ p.label }}
+        </button>
+      }
+    }
+    @if (covers().length) {
+      <span class="lbl"><app-icon name="test" [size]="12" /> Testet:</span>
+      @for (c of covers(); track c.id) {
+        <button type="button" class="place" [class.indirect]="!c.direct" (click)="goSegment(c.id, $event)"
+                [title]="c.direct ? 'Direkt aufgerufen' : 'Indirekt erreicht'">{{ c.name }}</button>
+      }
+    }
+    @if (testedBy().length) {
+      <span class="lbl"><app-icon name="test" [size]="12" /> Getestet von:</span>
+      @for (t of testedBy(); track t.id) {
+        <button type="button" class="place test" (click)="goSegment(t.id, $event)">{{ t.name }}</button>
+      }
+    }
+  </div>
+}
 
 @if (!collapsed()) {
   <div class="code" role="table">
@@ -38,12 +67,17 @@
              [class.has-refs]="!!line.refs?.length" [attr.data-new]="line.newLine">
           <span class="g-check">
             @if (line.own) {
-              <button type="button" class="check" [class.on]="isOk(line)" (click)="toggleLine(i, $event)"
-                      title="Als ok markieren (Shift-Klick: Bereich)">
+              @let m = multi(line);
+              <button type="button" class="check" [class.on]="isOk(line)" [class.part]="!isOk(line) && !place() && !!m && m.ok > 0"
+                      (click)="toggleLine(i, $event)"
+                      [title]="m ? (place() ? 'Hier als ok markieren (' + m.ok + '/' + m.of + ' Orte ok)' : 'An allen ' + m.of + ' Orten als ok markieren (' + m.ok + '/' + m.of + ' ok)') : 'Als ok markieren (Shift-Klick: Bereich)'">
                 @if (isOk(line)) {
                   <app-icon name="check" [size]="11" />
                 }
               </button>
+              @if (m && !place()) {
+                <span class="multi" [class.done]="m.ok === m.of" [title]="'Zeile ist ' + m.of + ' Orten zugewiesen, ' + m.ok + ' davon ok – Sprünge oben im Block'">{{ m.of }}</span>
+              }
             }
           </span>
           <span class="g-num">{{ line.oldLine ?? '' }}</span>

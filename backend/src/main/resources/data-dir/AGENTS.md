@@ -13,7 +13,7 @@ reviews/<provider>/<owner>/<repo>/<number>/      provider: github | gitlab; nest
   snapshot.json        PR metadata + parsed diff (frozen when the PR was first opened)
   sources/<path>       new version of each analysed file
   analysis.json        derived: segments, categories, flows (safe to delete; recomputed)
-  review.json          THE ONLY REAL STATE: which changed lines are marked "ok"
+  review.json          THE ONLY REAL STATE: which changed lines are marked "ok" (per place)
   comments.json        cache of the last comment fetch (GitHub or GitLab)
 ```
 
@@ -29,6 +29,10 @@ Only changed lines can be marked. Valid keys per segment: `analysis.json` → `s
 2. `segments[]` → `path`, `symbol`, `category`, `group`, `reason`, `lineKeys`, `lines` (display lines incl.
    context; `refs` on call sites point to called segments).
 3. `flows[]` → `steps[]` in call order (`depth`, `parentSegmentId`) and `edges[]` (`from` → `to`, call-site `line`).
+4. `segments[].places` → every group id that shows the segment (e.g. `quick-wins/mapper`, `flows/flow-2`).
+   A segment at several places needs one ok per place.
+5. `tests[]` → per changed test case: `subjects` (components under test) and `covers` (reached segments,
+   `direct` or `via` another segment, `line` = call site in the test). `segments[].testedBy` is the reverse.
 
 ## Marking lines as ok
 
@@ -39,16 +43,21 @@ POST http://localhost:8080/api/prs/<provider>/<owner>/<repo>/<number>/marks
 {"lines":[{"path":"src/a.ts","key":"N12"}],"ok":true,"scope":"group:quick-wins/übersetzungen","by":"agent:<your-name>"}
 ```
 
+Without `place` a mark applies at all places of the line. To mark one place only, add `"place": "flows/flow-2"`.
+
 Or edit `review.json` directly:
 
 ```json
 { "schemaVersion": 1, "pr": "github/owner/repo/12", "headSha": "…",
   "ok": { "src/a.ts": ["N12", "N13"] },
+  "okAt": { "flows/flow-2": { "src/b.ts": ["N40"] } },
   "log": [ { "at": "<ISO-8601>", "by": "agent:<your-name>", "action": "ok", "scope": "<what you marked>", "count": 2 } ] }
 ```
 
 Rules for direct edits: read first, write the whole file atomically (temp file + rename), keep keys sorted,
 only use keys from `lineKeys`, always append a `log` entry with `"by": "agent:<name>"`.
+`ok` = ok at all places of the line; `okAt[place]` = ok at that place only. When a line is ok at all its places,
+move it to `ok` and remove it from `okAt`.
 
 ## Other endpoints
 
