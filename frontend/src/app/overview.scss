@@ -319,3 +319,105 @@ h2 {
   color: #e0b46d;
   font-size: 12px;
 }
+
+.cat {
+  position: relative;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 26px;
+  height: 14px;
+  border-radius: 7px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-strong);
+  cursor: pointer;
+
+  span {
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--fg-dim);
+    transition: left 0.15s;
+  }
+
+  &.on {
+    background: var(--accent);
+    border-color: var(--accent);
+
+    span {
+      left: 13px;
+      background: #fff;
+    }
+  }
+}
+
+.cat .switch {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  opacity: 0.55;
+}
+
+.cat:hover .switch {
+  opacity: 1;
+}
+
+.off-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 0;
+  font-size: 12px;
+
+  .lbl {
+    color: var(--fg-dim);
+  }
+}
+
+.off-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--fg-muted);
+  font: inherit;
+  cursor: pointer;
+
+  &:hover {
+    border-color: var(--accent);
+    color: var(--fg);
+  }
+}
+
+.arch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 0;
+  font-size: 12px;
+
+  app-icon {
+    vertical-align: -2px;
+  }
+}
+
+.arch-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: rgba(84, 138, 247, 0.16);
+  color: #7da5f8;
+}

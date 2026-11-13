@@ -23,6 +23,8 @@
 | `analysis/CodeText` | Mini-Lexer: Kopie des Quelltexts, in der Strings und Kommentare ausgeblendet sind, plus Klammerpaare. |
 | `analysis/SymbolExtractor` | Findet Funktionen, Methoden, Klassen, Typen und Top-Level-Konstanten mit Zeilenbereich. |
 | `analysis/FileView` | Neue Dateiversion mit eingewobenen gelöschten Zeilen, um ganze Funktionen mit Diff-Farben zu zeigen. |
+| `analysis/Structure` | Ports-&-Adapters-Erkennung aus den Ordnern, Schicht einer Datei, Frontend-Erkennung, Komponenten-Schlüssel. |
+| `analysis/Http` | REST quer durch den Stack: HTTP-Aufrufe im Client-Code, Endpunkte im Server-Code, Vergleich der Pfade. |
 | `analysis/Rules` | Lädt und wertet `rules.json` aus (Pfad-Globs, Zeilenmuster, Symbolarten). |
 | `analysis/Analyzer` | Segmente bilden → klassifizieren → Aufrufkanten finden → Flüsse bauen (einer pro Einstiegspunkt) → Orte pro Segment → Tests mit dem erreichten Code verknüpfen → Anzeigezeilen rendern. |
 | `store/DataStore` | Datenverzeichnis, atomare JSON-Schreibvorgänge, Pfad-Sicherheit. |
@@ -38,6 +40,7 @@ Alle PR-Endpunkte unter `/api/prs/{provider}/{owner}/{repo}/{number}`; `provider
 
 | Methode | Pfad | Zweck |
 |---|---|---|
+| GET / PUT | `/api/settings` | Ausgeschaltete Kategorien `{"disabledCategories":["fe-templates"]}` (global, `<data>/settings.json`) |
 | GET | `/api/me` | Konten pro Provider (User oder Grund, warum keiner), Datenverzeichnis |
 | GET | `/api/resolve?url=…` | PR-/MR-URL von GitHub oder GitLab → `{provider, owner, repo, number}` |
 | GET | `/api/prs?filter=all\|authored\|review-requested` | Offene PRs (mit lokalem Fortschritt, falls vorhanden) |
@@ -65,6 +68,7 @@ Angular 22, standalone Komponenten, Signals, zoneless, `OnPush`.
 | `overview.*` | PR-Übersicht: Fortschritt, vorgeschlagene Reihenfolge, Beschreibung, allgemeine Kommentare, letzte Markierungen. |
 | `group-view.ts` | Liste von Code-Blöcken (Kategorie, Gruppe, Datei) mit Fokus-Leiste (einzeln durchgehen, alle ein-/ausklappen). |
 | `flow-view.*` | Aufrufbaum-Diagramm (SVG) + Code-Blöcke in Aufrufreihenfolge, eingerückt nach Tiefe, mit Verbindungslinien von der Aufrufzeile zum aufgerufenen Block. Schritte aus-/einblenden, Fokus auf einen Zweig, Erledigte ausblenden, Schritt für Schritt. |
+| `component-diagram.ts` | Komponentendiagramm der Übersicht: Spalten nach Schicht, Aufruf- und REST-Kanten, Fokus pro Komponente, Tests/isolierte ein-/ausblenden. |
 | `test-overview.ts` | Testübersicht: pro Testfall die Komponenten und die abgedeckten Codestellen (direkt / über …), mit Sprüngen. |
 | `code-block.*` | Ein Segment an einem Ort: Gutter mit Häkchen (ortsbezogen), alte/neue Zeilennummer, Diff-Farben, Highlighting, Inline-Kommentare, Aufruf-Chips, Leiste mit allen Orten und Test-Verknüpfungen, einklappbar. |
 | `highlight.ts` | highlight.js; neue und alte Version werden je als zusammenhängender Text hervorgehoben (korrekt bei mehrzeiligen Kommentaren/Strings) und dann pro Zeile verteilt. |

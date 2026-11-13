@@ -20,6 +20,7 @@ interface TreeNode {
   children?: TreeNode[];
   focus?: string;
   css?: string;
+  title?: string;
 }
 
 /** The "Review" tool window: categories, flows and files as trees with progress and bulk "ok" actions. */
@@ -39,7 +40,7 @@ export class ReviewTree {
     const b = this.store.bundle();
     if (!b) return [];
     const segs = this.store.segments();
-    return b.analysis.categories.map((c) => ({
+    return this.store.categories().map((c) => ({
       id: 'c:' + c.id,
       label: c.label,
       icon: c.icon,
@@ -50,8 +51,10 @@ export class ReviewTree {
       scope: `category:${c.id}`,
       children: c.groups.map((g) => ({
         id: 'g:' + g.id,
-        label: g.label,
-        hint: g.flowId ? g.description ?? undefined : undefined,
+        // file groups (single changes, tests, architecture/frontend categories): file name, folder as hint
+        label: !g.flowId && g.label.includes('/') ? g.label.substring(g.label.lastIndexOf('/') + 1) : g.label,
+        hint: g.flowId ? g.description ?? undefined : g.label.includes('/') ? shortDir(g.label) : undefined,
+        title: g.label,
         icon: g.flowId ? 'flow' : c.id === 'logic' || c.id === 'tests' ? 'file' : 'folder',
         depth: 1,
         selection: (g.flowId ? { kind: 'flow', id: g.flowId } : { kind: 'group', id: g.id }) as Selection,
@@ -208,6 +211,13 @@ export class ReviewTree {
     }
   }
 
+  protected switchOff(n: TreeNode, event: Event): void {
+    event.stopPropagation();
+    if (n.selection.kind === 'category') {
+      this.store.toggleCategory(n.selection.id);
+    }
+  }
+
   protected mark(n: TreeNode, event: Event): void {
     event.stopPropagation();
     this.store.toggle(this.store.linesOf(n.slots), n.scope);
@@ -216,4 +226,11 @@ export class ReviewTree {
   protected setTab(t: Tab): void {
     this.tab.set(t);
   }
+}
+
+/** "frontend/src/app/players/player-view.ts" -> "…/players" */
+function shortDir(path: string): string {
+  const dir = path.substring(0, path.lastIndexOf('/'));
+  const last = dir.substring(dir.lastIndexOf('/') + 1);
+  return dir.includes('/') ? '…/' + last : dir;
 }

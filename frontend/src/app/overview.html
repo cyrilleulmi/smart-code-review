@@ -41,9 +41,33 @@
       <span class="ring" [style.--p]="percent(c.progress)">
         <span>{{ percent(c.progress) }}%</span>
       </span>
+      <span class="switch on" role="switch" aria-checked="true" tabindex="0" title="Kategorie ausschalten (ausgeblendet, braucht kein Ok)"
+            (click)="toggle(c.id, $event)" (keydown.enter)="toggle(c.id, $event)"><span></span></span>
     </button>
   }
 </div>
+@if (disabled().length) {
+  <div class="off-list">
+    <span class="lbl">Ausgeschaltet:</span>
+    @for (c of disabled(); track c.id) {
+      <button type="button" class="off-cat" (click)="toggle(c.id, $event)" title="Wieder einschalten">
+        <app-icon [name]="c.icon" [size]="13" /> {{ c.label }} <span class="switch"><span></span></span>
+      </button>
+    }
+  </div>
+}
+
+<div class="arch">
+  @if (architecture()?.style === 'hexagonal') {
+    <span class="arch-badge" [title]="'Gefunden: ' + architecture()!.evidence.join(', ')"><app-icon name="hexagon" [size]="13" /> Ports &amp; Adapters erkannt</span>
+    <span class="muted">Kategorien Domäne, Use Cases, Application Layer und Adapter sind aktiv.</span>
+  } @else {
+    <span class="muted"><app-icon name="hexagon" [size]="13" /> Keine Ports-&amp;-Adapters-Struktur erkannt (Ordner wie <code>domain</code> + <code>adapter</code>/<code>port</code>) – keine Architektur-Kategorien.</span>
+  }
+</div>
+
+<h2>Komponenten</h2>
+<app-component-diagram />
 
 <div class="cols">
   <section>

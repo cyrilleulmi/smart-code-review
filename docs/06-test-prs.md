@@ -24,6 +24,8 @@ Für den PoC wurden in drei eigenen Repos **Draft-PRs** erstellt. Alle tragen **
   * `PlayerResourceTest › detectsNumberWornByTeammate` → `Player.isJerseyNumberTaken` direkt (Komponenten `PlayerResource.java` per Name, `Player` per Aufruf)
   * `PlayerView › jersey number › …` (2 Fälle) → Komponente `player-view.ts`; `saveJerseyNumber` direkt, `PlayerApiService.setJerseyNumber` indirekt
 
+* Seit 0.4: **ein Flow über REST** `saveJerseyNumber → setJerseyNumber ⇢ PUT /api/players/{} ⇢ update → validateJerseyNumber → isJerseyNumberTaken`; Frontend-Kategorien *API-Anbindung* (`setJerseyNumber`), *Komponenten-Logik*, *Templates*; keine Architektur-Kategorien (geschichtet: `api` + `domain`, kein Ports & Adapters); Komponentendiagramm Frontend → API → Domäne mit gestrichelter REST-Kante.
+
 **camperquiz#1**
 
 * Flow: `renderPunkte → renderJokerButtons → canUseJoker / activateJoker`
@@ -36,6 +38,10 @@ Für den PoC wurden in drei eigenen Repos **Draft-PRs** erstellt. Alle tragen **
 * Flow: `EventList → registrationStatus → CLOSING_SOON_MS` plus `DEADLINE_STYLE`, `formatDeadline`
 
 **stv-bero-website#1:** Snapshot rund 15 s (194 Quelltexte), Analyse rund 5 s, 69 Flüsse, 20 Testfälle. Einzelne Flüsse sind bei so einem «ganze neue Website»-PR noch gross (bis 80 Schritte), siehe Annahme B4; 24 Blöcke liegen an mehreren Orten.
+
+## Ports & Adapters
+
+[thombergs/buckpal#41](https://github.com/thombergs/buckpal/pull/41) (öffentliches Beispielprojekt für Hexagonal Architecture, 47 Dateien, nur gelesen): erkannt über `adapter`, `application`, `application/domain`, `application/port`. Kategorien *Domäne* (Account, Activity, Money …), *Use Cases* (SendMoneyUseCase, GetAccountBalanceUseCase), *Application Layer* (SendMoneyService, LoadAccountPort …), *Adapter* (eingehend: SendMoneyController; ausgehend: AccountPersistenceAdapter, AccountMapper …). 38 Komponenten im Diagramm.
 
 ## GitLab
 

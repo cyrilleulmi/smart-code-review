@@ -188,3 +188,13 @@
   font-size: 10.5px;
   flex: none;
 }
+
+.off-note {
+  margin: 8px 12px;
+  color: var(--fg-dim);
+  font-size: 11.5px;
+
+  a {
+    color: var(--accent-fg);
+  }
+}

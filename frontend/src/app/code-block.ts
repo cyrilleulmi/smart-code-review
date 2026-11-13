@@ -126,6 +126,10 @@ export class CodeBlock {
     return this.store.okCount(this.segment().path, line.key);
   }
 
+  protected layerLabel(layer: string): string {
+    return ({ domain: 'Domäne', usecase: 'Use Case', application: 'Application', adapter: 'Adapter' } as Record<string, string>)[layer] ?? layer;
+  }
+
   protected goPlace(id: string, event: Event): void {
     event.stopPropagation();
     if (id !== this.place()) {

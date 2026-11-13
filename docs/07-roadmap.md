@@ -5,7 +5,7 @@ In grober Reihenfolge des Nutzens.
 ## Nächste Schritte
 
 1. **Neue Commits** (bisher out of scope): Markierungen beim Neuladen über den Zeileninhalt (Hash + Nachbarschaft) statt über die Nummer übertragen. Was sich geändert hat, wieder als offen zeigen («seit deinem letzten Review»).
-2. **Frontend ↔ Backend verbinden:** URL-Muster im Client (`http.put('/api/players/…')`) mit Server-Routen (`@Path`, `@GetMapping`, Next.js-`route.ts`) abgleichen, damit ein Fullstack-Feature ein einziger Flow ist.
+2. **REST-Verbindung erweitern** (Grundfunktion seit 0.4): URLs aus Konstanten/Environment auflösen, OpenAPI-generierte Clients, GraphQL-Operationen; Architektur-Regeln prüfen (z. B. «Domäne importiert keinen Adapter») und Verstösse als eigene Kategorie zeigen.
 3. **Unveränderte Zwischenstationen** einblenden: Wenn A → X → B und nur A und B geändert sind, X als graue «Durchreiche» im Flow zeigen.
 4. **Weitere Zustände** pro Zeile/Block: «Frage», «muss geändert werden», mit Notiz. Daraus einen Kommentarentwurf erzeugen.
 5. **Sortiermöglichkeiten** (Auftrag «später»): nach Risiko (Zeilen × Verzweigungen × fehlende Tests), nach Schicht (UI → Service → Persistenz), nach Autor-Commit, nach Datei (GitHub-artig) – als Umschalter im Review-Fenster. Technisch eine weitere «Sicht» auf dieselben Segmente.

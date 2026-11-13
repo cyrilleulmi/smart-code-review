@@ -127,6 +127,9 @@ export interface Segment {
   places: string[];
   /** test segments that reach this code */
   testedBy: string[];
+  /** ports & adapters layer (domain | application | usecase | adapter), null if none */
+  layer: string | null;
+  frontend: boolean;
 }
 
 export interface Group {
@@ -157,6 +160,8 @@ export interface FlowEdge {
   to: string;
   line: number | null;
   via: string;
+  /** "http" = frontend REST call matched to a backend endpoint (via = "PUT /api/x/{}") */
+  kind: 'call' | 'http';
 }
 
 export interface Flow {
@@ -188,6 +193,31 @@ export interface TestInfo {
   covers: TestCoverage[];
 }
 
+export interface ArchitectureInfo {
+  style: 'hexagonal' | null;
+  evidence: string[];
+}
+
+export interface Component {
+  id: string;
+  name: string;
+  paths: string[];
+  /** column in the component diagram */
+  area: string;
+  segmentIds: string[];
+}
+
+export interface ComponentEdge {
+  from: string;
+  to: string;
+  calls: number;
+  http: boolean;
+}
+
+export interface Settings {
+  disabledCategories: string[];
+}
+
 export interface Analysis {
   schemaVersion: number;
   generatedAt: string;
@@ -197,6 +227,9 @@ export interface Analysis {
   categories: Category[];
   flows: Flow[];
   tests: TestInfo[];
+  architecture: ArchitectureInfo | null;
+  components: Component[];
+  componentEdges: ComponentEdge[];
 }
 
 export interface LogEntry {
@@ -281,6 +314,14 @@ export class Api {
 
   me(): Observable<Me> {
     return this.http.get<Me>('/api/me');
+  }
+
+  settings(): Observable<Settings> {
+    return this.http.get<Settings>('/api/settings');
+  }
+
+  saveSettings(settings: Settings): Observable<Settings> {
+    return this.http.put<Settings>('/api/settings', settings);
   }
 
   prs(): Observable<PullRequestSummary[]> {

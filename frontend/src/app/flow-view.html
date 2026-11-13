@@ -22,12 +22,16 @@
     </button>
     <button type="button" class="ftool" (click)="store.setCollapsedAll(true)"><app-icon name="collapse" [size]="13" /> Alle einklappen</button>
     <button type="button" class="ftool" (click)="store.setCollapsedAll(false)"><app-icon name="expand" [size]="13" /> Alle ausklappen</button>
+    @if (focusName(); as f) {
+      <span class="focus-info"><app-icon name="focus" [size]="12" /> Fokus: <b>{{ f }}</b> und was davon abhängt · {{ nodes().length }} von {{ flow().steps.length }} Schritten</span>
+      <button type="button" class="ftool" (click)="focusRoot.set(null)"><app-icon name="close" [size]="13" /> Fokus aufheben</button>
+    }
     @if (hiddenCount() > 0) {
-      <span class="info">{{ hiddenCount() }} von {{ nodes().length }} Schritten ausgeblendet</span>
+      <span class="info">{{ hiddenCount() }} ausgeblendet</span>
       <button type="button" class="ftool" (click)="showAll()"><app-icon name="eye" [size]="13" /> Alle zeigen</button>
     }
     <span class="spacer"></span>
-    <span class="hint">Im Diagramm: <app-icon name="eye" [size]="11" /> ein-/ausblenden · <app-icon name="focus" [size]="11" /> nur dieser Zweig</span>
+    <span class="hint">Im Knoten: <app-icon name="focus" [size]="11" /> nur dieser Knoten und alles dahinter · <app-icon name="eye" [size]="11" /> ein-/ausblenden</span>
   } @else {
     @let i = stepIndex()!;
     <span class="step-info">Schritt <b>{{ i + 1 }}</b> von {{ nodes().length }}</span>
@@ -47,7 +51,11 @@
       </marker>
     </defs>
     @for (e of d.edges; track $index) {
-      <path [attr.d]="e.d" class="edge" [class.hot]="hovered() === e.from || hovered() === e.to" [class.back]="e.back" marker-end="url(#arrow)" />
+      <path [attr.d]="e.d" class="edge" [class.hot]="hovered() === e.from || hovered() === e.to" [class.back]="e.back" [class.http]="e.http"
+            marker-end="url(#arrow)"><title>{{ e.http ? 'HTTP ' + e.via : e.via }}</title></path>
+      @if (e.http) {
+        <text class="http-label" [attr.x]="e.lx" [attr.y]="e.ly" text-anchor="middle">HTTP</text>
+      }
     }
   </svg>
   @for (n of nodes(); track n.step.segmentId; let i = $index) {
@@ -55,10 +63,10 @@
     <div class="node" role="listitem" tabindex="0"
             [style.left.px]="n.x" [style.top.px]="n.y" [style.width.px]="d.nodeW" [style.height.px]="d.nodeH"
             [class.done]="p.total > 0 && p.ok === p.total" [class.quick]="n.segment.category === 'quick-wins'"
-            [class.off]="!visible().has(n.step.segmentId)" [class.current]="stepIndex() === i"
+            [class.off]="!visible().has(n.step.segmentId)" [class.current]="stepIndex() === i" [class.root]="focusRoot() === n.step.segmentId"
             (mouseenter)="hovered.set(n.step.segmentId)" (mouseleave)="hovered.set(null)"
             (click)="scrollTo(n.step.segmentId)" (keydown.enter)="scrollTo(n.step.segmentId)">
-      <span class="no">{{ i + 1 }}</span>
+      <span class="no">{{ n.no }}</span>
       <span class="txt">
         <span class="name"><app-symbol-badge [kind]="n.segment.symbolKind" /> {{ nodeName(n.segment) }}</span>
         <span class="file">{{ nodeHint(n.segment) }}</span>
@@ -69,10 +77,11 @@
         <span class="cnt">{{ p.ok }}/{{ p.total }}</span>
       }
       <span class="acts">
-        <button type="button" (click)="toggleHidden(n.step.segmentId, $event)" [title]="hidden().has(n.step.segmentId) ? 'Einblenden' : 'Ausblenden'">
+        <button type="button" class="eye" (click)="toggleHidden(n.step.segmentId, $event)" [title]="hidden().has(n.step.segmentId) ? 'Einblenden' : 'Ausblenden'">
           <app-icon [name]="hidden().has(n.step.segmentId) ? 'eyeOff' : 'eye'" [size]="12" />
         </button>
-        <button type="button" (click)="focusOn(n.step.segmentId, $event)" title="Nur diesen Schritt und was er aufruft zeigen">
+        <button type="button" class="focus" [class.on]="focusRoot() === n.step.segmentId" (click)="focusOn(n.step.segmentId, $event)"
+                [title]="focusRoot() === n.step.segmentId ? 'Fokus aufheben' : 'Nur diesen Knoten und alle dahinter abhängigen zeigen'">
           <app-icon name="focus" [size]="12" />
         </button>
       </span>
@@ -91,19 +100,19 @@
       <app-code-block
         [segment]="n.segment"
         [place]="place()"
-        [step]="i + 1"
+        [step]="n.no"
         [stepOf]="stepOf()"
         [calledBy]="calledBy(n)"
-        [style.margin-left.px]="32 + n.step.depth * indent"
+        [style.margin-left.px]="32 + n.depth * indent"
         (mouseenter)="hovered.set(n.step.segmentId)"
         (mouseleave)="hovered.set(null)"
         (refClick)="scrollTo($event)"
         (calledByClick)="scrollToParent(n)"
       />
     } @else if (stepIndex() === null) {
-      <button type="button" class="hidden-step" [style.margin-left.px]="32 + n.step.depth * indent" (click)="toggleHidden(n.step.segmentId, $event)"
+      <button type="button" class="hidden-step" [style.margin-left.px]="32 + n.depth * indent" (click)="toggleHidden(n.step.segmentId, $event)"
               title="Einblenden">
-        <span class="no">{{ i + 1 }}</span> {{ nodeName(n.segment) }}
+        <span class="no">{{ n.no }}</span> {{ nodeName(n.segment) }}
         <span class="dim">{{ isDone(n.step.segmentId) && !hidden().has(n.step.segmentId) ? 'erledigt' : 'ausgeblendet' }}</span>
         <app-icon name="eye" [size]="12" />
       </button>

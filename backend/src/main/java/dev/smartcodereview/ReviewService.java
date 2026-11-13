@@ -19,7 +19,9 @@ import dev.smartcodereview.model.Model.PrRef;
 import dev.smartcodereview.model.Model.Progress;
 import dev.smartcodereview.model.Model.PullRequestSummary;
 import dev.smartcodereview.model.Model.ReviewBundle;
+import dev.smartcodereview.model.Model.RepoStructure;
 import dev.smartcodereview.model.Model.ReviewState;
+import dev.smartcodereview.model.Model.Settings;
 import dev.smartcodereview.model.Model.Segment;
 import dev.smartcodereview.model.Model.Snapshot;
 import dev.smartcodereview.provider.ProviderException;
@@ -191,15 +193,35 @@ public class ReviewService {
             store.readText(DataStore.resolveInside(sourcesDir, f.path())).ifPresent(s -> sources.put(f.path(), s));
         }
         long t0 = System.currentTimeMillis();
-        Analysis analysis = new Analyzer(rules()).analyze(snapshot, sources);
+        Analysis analysis = new Analyzer(rules()).analyze(snapshot, sources, structure(ref, snapshot).directories());
         Log.infof("Analysed %s in %d ms: %d segments, %d flows", ref.key(), System.currentTimeMillis() - t0,
                 analysis.segments().size(), analysis.flows().size());
         store.write(analysisFile(ref), analysis);
         return analysis;
     }
 
+    /** Repository directories at the PR head (architecture detection); fetched once, empty if unavailable. */
+    private RepoStructure structure(PrRef ref, Snapshot snapshot) {
+        Path file = prDirFile(ref, "structure.json");
+        return store.read(file, RepoStructure.class).orElseGet(() -> {
+            try {
+                RepoStructure s = provider(ref.provider()).directories(ref, snapshot.pr().headSha());
+                store.write(file, s);
+                return s;
+            } catch (ProviderException e) {
+                Log.warnf("Repository structure of %s not available: %s", ref.key(), e.getMessage());
+                return new RepoStructure(List.of(), true);
+            }
+        });
+    }
+
     private Snapshot fetch(PrRef ref) {
         Snapshot snapshot = provider(ref.provider()).fetchSnapshot(ref);
+        try {
+            Files.deleteIfExists(prDirFile(ref, "structure.json")); // re-read for the new head
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
         List<DiffFile> wanted = wantedSources(snapshot, rules());
         fetchSources(ref, snapshot, wanted);
         store.write(snapshotFile(ref), snapshot);
@@ -243,6 +265,35 @@ public class ReviewService {
                 }
             }
         }
+    }
+
+    // ------------------------------------------------------------------ settings
+
+    public Settings settings() {
+        return store.read(store.root().resolve("settings.json"), Settings.class)
+                .map(s -> s.disabledCategories() == null ? new Settings(List.of()) : s)
+                .orElse(new Settings(List.of()));
+    }
+
+    public Settings saveSettings(Settings settings) {
+        List<String> disabled = settings.disabledCategories() == null ? List.of()
+                : settings.disabledCategories().stream().filter(c -> c != null && c.matches("[\\w-]+")).distinct().sorted().toList();
+        Settings clean = new Settings(disabled);
+        store.write(store.root().resolve("settings.json"), clean);
+        return clean;
+    }
+
+    /** Places that count: those whose category is switched on (a place id starts with its category id). */
+    private static List<String> effective(List<String> places, Set<String> disabled) {
+        if (places == null) {
+            return List.of();
+        }
+        return disabled.isEmpty() ? places : places.stream().filter(p -> !disabled.contains(categoryOf(p))).toList();
+    }
+
+    private static String categoryOf(String place) {
+        int slash = place.indexOf('/');
+        return slash < 0 ? place : place.substring(0, slash);
     }
 
     // ------------------------------------------------------------------ marks
@@ -335,12 +386,13 @@ public class ReviewService {
         }
     }
 
-    /** "path\0key" -> places of the segment that owns the line (from the current analysis). */
+    /** "path\0key" -> places of the segment that owns the line (current analysis, switched-on categories only). */
     private Map<String, List<String>> placesByLine(PrRef ref) {
         Map<String, List<String>> result = new HashMap<>();
+        Set<String> disabled = Set.copyOf(settings().disabledCategories());
         store.read(analysisFile(ref), Analysis.class).ifPresent(a -> {
             for (Segment s : a.segments()) {
-                List<String> places = s.places() == null ? List.of() : s.places();
+                List<String> places = effective(s.places(), disabled);
                 s.lineKeys().forEach(k -> result.put(s.path() + "\u0000" + k, places));
             }
         });
@@ -380,10 +432,14 @@ public class ReviewService {
             return Optional.empty();
         }
         ReviewState st = state(ref);
+        Set<String> disabled = Set.copyOf(settings().disabledCategories());
         int total = 0, ok = 0;
         for (Segment s : analysis.get().segments()) {
             Set<String> marked = new LinkedHashSet<>(st.ok().getOrDefault(s.path(), List.of()));
-            List<String> places = s.places() == null ? List.of() : s.places();
+            List<String> places = effective(s.places(), disabled);
+            if (s.places() != null && !s.places().isEmpty() && places.isEmpty()) {
+                continue; // only shown in switched-off categories: nothing to review
+            }
             for (String key : s.lineKeys()) {
                 total++;
                 boolean everywhere = !places.isEmpty() && places.stream()

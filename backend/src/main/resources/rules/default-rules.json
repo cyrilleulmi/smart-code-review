@@ -1,20 +1,30 @@
 {
-  "$comment": "SmartCodeReview classification rules. Copy to <dataDir>/rules.json to customise; the app re-analyses when the file changes. Rules are evaluated top to bottom, the first match wins. 'paths' rules classify whole files; 'kinds' rules classify segments by symbol kind (class, interface, type, enum, function, method, component, const); 'lines' rules classify one segment (a changed function, type, hunk, ...) when ALL its changed lines match one of 'lines' (blank lines, braces and comments are always allowed) and, if given, at least one line matches 'require'. 'symbol' optionally restricts the name of the enclosing function/class. 'symbols': true keeps splitting matched files into functions/test cases (used for tests, so they can be linked to the code they exercise).",
+  "$comment": "SmartCodeReview classification rules. Copy to <dataDir>/rules.json to customise; the app re-analyses when the file changes. Rules are evaluated top to bottom, the first match wins. 'paths' rules classify whole files; 'kinds' rules classify segments by symbol kind (class, interface, type, enum, function, method, component, const); 'lines' rules classify one segment (a changed function, type, hunk, ...) when ALL its changed lines match one of 'lines' (blank lines, braces and comments are always allowed) and, if given, at least one line matches 'require'. 'symbol' optionally restricts the name of the enclosing function/class. 'symbols': true keeps splitting matched files into functions/test cases (used for tests, so they can be linked to the code they exercise). 'extras': false keeps segments of a rule out of the architecture and frontend categories. Categories 'domain', 'usecases', 'application', 'adapters' are filled automatically when the repository uses ports & adapters; the frontend categories are filled by 'aspects' (first match wins; 'paths', 'kinds', 'symbol', 'text' = pattern in the segment's code, 'fileText' = pattern anywhere in the file, 'special': 'markup'). Every category is a place of its own and needs its own ok; categories can be switched off in the UI.",
   "categories": [
     { "id": "quick-wins", "label": "Quick wins", "icon": "bolt", "description": "Höchstwahrscheinlich irrelevante oder rein mechanische Änderungen: generierter Code, Übersetzungen, DTOs, Mapper, banale REST-Aufrufe, Imports. Schnell überfliegen und abhaken." },
     { "id": "flows", "label": "Datenflüsse", "icon": "flow", "description": "Geänderte Funktionen, die sich gegenseitig aufrufen – in Aufrufreihenfolge, damit man den Fluss am Stück nachvollziehen kann." },
+    { "id": "domain", "label": "Domäne", "icon": "hexagon", "description": "Ports & Adapters: fachliche Kernmodelle und Regeln. Sollten keine Technik (HTTP, Datenbank, Frameworks) kennen." },
+    { "id": "usecases", "label": "Use Cases", "icon": "target", "description": "Ports & Adapters: Anwendungsfälle, die die Domäne für einen konkreten Ablauf orchestrieren." },
+    { "id": "application", "label": "Application Layer", "icon": "layers", "description": "Ports & Adapters: Application Services und Ports – die Schnittstellen nach innen und aussen." },
+    { "id": "adapters", "label": "Adapter", "icon": "plug", "description": "Ports & Adapters: Technik an den Rändern – eingehend (REST, UI, CLI) und ausgehend (Persistenz, externe Clients)." },
+    { "id": "fe-routing", "label": "Frontend: Routing & Navigation", "icon": "route", "description": "Routen, Guards, Seiten-Einstiege: Wer kommt wohin, was ist geschützt?" },
+    { "id": "fe-state", "label": "Frontend: Zustand & Stores", "icon": "data", "description": "Stores, Reducer, Effects, gemeinsamer Zustand: Woher kommen die Daten im UI, wer ändert sie?" },
+    { "id": "fe-api", "label": "Frontend: API-Anbindung", "icon": "globe", "description": "HTTP-Aufrufe ans Backend: URL, Methode, Fehlerbehandlung, Ladezustand." },
+    { "id": "fe-forms", "label": "Frontend: Formulare & Validierung", "icon": "form", "description": "Eingaben, Validierung, Absenden – was passiert bei ungültigen Werten?" },
+    { "id": "fe-components", "label": "Frontend: Komponenten-Logik", "icon": "component", "description": "Verhalten der UI-Komponenten: Event-Handler, Lifecycle, berechnete Werte." },
+    { "id": "fe-templates", "label": "Frontend: Templates & Markup", "icon": "code", "description": "Was der Benutzer sieht: HTML/JSX, Bindings, Bedingungen, Barrierefreiheit." },
     { "id": "logic", "label": "Einzelne Änderungen", "icon": "code", "description": "Geänderte Logik ohne erkennbaren Aufrufzusammenhang zu anderen Änderungen." },
-    { "id": "tests", "label": "Tests", "icon": "test", "description": "Geänderte Tests – mit den Komponenten und Codestellen, die sie (statisch ermittelt) aufrufen." },
-    { "id": "styles", "label": "Styles & Assets", "icon": "palette", "description": "CSS, Bilder, Icons und andere Assets." }
+    { "id": "tests", "extras": false, "label": "Tests", "icon": "test", "description": "Geänderte Tests – mit den Komponenten und Codestellen, die sie (statisch ermittelt) aufrufen." },
+    { "id": "styles", "extras": false, "label": "Styles & Assets", "icon": "palette", "description": "CSS, Bilder, Icons und andere Assets." }
   ],
   "rules": [
     {
-      "id": "generated", "category": "quick-wins", "group": "Generiert & Lockfiles",
+      "id": "generated", "extras": false, "category": "quick-wins", "group": "Generiert & Lockfiles",
       "reason": "Generierte Datei oder Lockfile",
       "paths": ["**/package-lock.json", "**/yarn.lock", "**/pnpm-lock.yaml", "**/bun.lockb", "**/*.lock", "**/*.generated.*", "**/generated/**", "**/*-types.ts", "**/importMap.js", "**/importMap.ts", "**/*.min.js", "**/*.snap", "**/migrations/*.json"]
     },
     {
-      "id": "translations", "category": "quick-wins", "group": "Übersetzungen",
+      "id": "translations", "extras": false, "category": "quick-wins", "group": "Übersetzungen",
       "reason": "Übersetzungsdatei",
       "paths": ["**/i18n/**", "**/locales/**", "**/locale/**", "**/lang/**", "**/translations/**", "**/*.po", "**/*.pot", "**/*.xlf", "**/*.xliff", "**/messages*.properties", "**/*.arb", "**/translations.*", "**/messages.*"]
     },
@@ -29,12 +39,12 @@
       "paths": ["**/*.css", "**/*.scss", "**/*.sass", "**/*.less", "**/*.svg", "**/*.png", "**/*.jpg", "**/*.jpeg", "**/*.gif", "**/*.webp", "**/*.ico", "**/*.woff", "**/*.woff2"]
     },
     {
-      "id": "docs", "category": "quick-wins", "group": "Dokumentation",
+      "id": "docs", "extras": false, "category": "quick-wins", "group": "Dokumentation",
       "reason": "Dokumentation",
       "paths": ["**/*.md", "**/*.mdx", "**/*.txt", "**/*.adoc", "**/LICENSE*", "**/CHANGELOG*"]
     },
     {
-      "id": "build-config", "category": "quick-wins", "group": "Konfiguration & Build",
+      "id": "build-config", "extras": false, "category": "quick-wins", "group": "Konfiguration & Build",
       "reason": "Build-/Projekt-Konfiguration",
       "paths": ["**/package.json", "**/tsconfig*.json", "**/.github/**", "**/.gitignore", "**/.dockerignore", "**/.env*", "**/*.yml", "**/*.yaml", "**/*.toml", "**/.editorconfig", "**/.prettierrc*", "**/.eslintrc*", "**/eslint.config.*", "**/angular.json", "**/pom.xml", "**/build.gradle*", "**/application*.properties", "**/Dockerfile*", "**/docker-compose*"]
     },
@@ -54,7 +64,7 @@
       "kinds": ["interface", "type", "enum"]
     },
     {
-      "id": "imports", "category": "quick-wins", "group": "Imports & Formatierung",
+      "id": "imports", "extras": false, "category": "quick-wins", "group": "Imports & Formatierung",
       "reason": "Nur Imports/Exports geändert",
       "lines": [
         "^\\s*import\\b.*$",
@@ -67,7 +77,7 @@
       "require": ["\\bimport\\b|\\bfrom\\s+['\"]|^\\s*package\\s"]
     },
     {
-      "id": "formatting", "category": "quick-wins", "group": "Imports & Formatierung",
+      "id": "formatting", "extras": false, "category": "quick-wins", "group": "Imports & Formatierung",
       "reason": "Nur Formatierung / verschobene Zeilen (gleicher Inhalt)",
       "special": "same-content"
     },
@@ -133,10 +143,52 @@
       "require": [":\\s*('|\"|`|-?\\d|true|false)"]
     },
     {
-      "id": "logging", "category": "quick-wins", "group": "Logging",
+      "id": "logging", "extras": false, "category": "quick-wins", "group": "Logging",
       "reason": "Nur Logging-Ausgaben",
       "lines": ["^\\s*(console\\.(log|debug|info|warn|error)|(this\\.)?(log|logger|LOG|Log)\\.(trace|debug|info|warn|warning|error))\\(.*$"],
       "require": ["\\S"]
+    }
+  ],
+  "aspects": [
+    {
+      "id": "fe-routing-files", "category": "fe-routing", "reason": "Routing-Datei",
+      "paths": ["**/*.routes.ts", "**/*routing*.ts", "**/router/**", "**/routes/**", "**/guards/**", "**/*.guard.ts", "**/*.resolver.ts", "**/middleware.ts"]
+    },
+    {
+      "id": "fe-routing-code", "category": "fe-routing", "reason": "Routing-Konfiguration",
+      "text": ["\\bcanActivate\\b|\\bcreateBrowserRouter\\b|\\bcreateRouter\\b|\\bRouterModule\\.for|\\bprovideRouter\\b|<Route\\b|\\bRoutes\\s*="]
+    },
+    {
+      "id": "fe-state-files", "category": "fe-state", "reason": "Store-/State-Datei",
+      "paths": ["**/store/**", "**/stores/**", "**/state/**", "**/*.store.ts", "**/*.reducer.ts", "**/*.actions.ts", "**/*.selectors.ts", "**/*.effects.ts", "**/*Slice.ts", "**/*.slice.ts", "**/*.state.ts"]
+    },
+    {
+      "id": "fe-state-code", "category": "fe-state", "reason": "Gemeinsamer Zustand",
+      "text": ["\\bcreateStore\\b|\\bcreateSlice\\b|\\bdefineStore\\b|\\bcreateReducer\\b|\\bcreateSelector\\b|\\bsignalStore\\b|\\bBehaviorSubject\\b|\\buseContext\\(|\\bcreateContext\\("]
+    },
+    {
+      "id": "fe-api-code", "category": "fe-api", "reason": "HTTP-Aufruf ans Backend",
+      "text": ["\\b(http|httpClient|axios|api|apiClient)\\s*\\.\\s*(get|post|put|patch|delete)\\b|\\bfetch\\(|\\$fetch\\(|\\buseQuery\\(|\\buseMutation\\(|\\bHttpClient\\b"]
+    },
+    {
+      "id": "fe-forms-code", "category": "fe-forms", "reason": "Formular / Validierung",
+      "text": ["\\bFormGroup\\b|\\bFormControl\\b|\\bFormBuilder\\b|\\bValidators\\.|\\bngModel\\b|\\(ngSubmit\\)|\\buseForm\\(|\\bz\\.object\\(|\\byup\\.|\\bonSubmit\\b|<form\\b"]
+    },
+    {
+      "id": "fe-template-files", "category": "fe-templates", "reason": "Template-Datei",
+      "paths": ["**/*.html", "**/*.htm"]
+    },
+    {
+      "id": "fe-template-code", "category": "fe-templates", "reason": "Vor allem Markup (JSX / Template)",
+      "special": "markup"
+    },
+    {
+      "id": "fe-components", "category": "fe-components", "reason": "Komponente",
+      "paths": ["**/*.component.ts", "**/components/**", "**/*.tsx", "**/*.jsx", "**/*.vue", "**/*.svelte", "**/pages/**", "**/views/**"]
+    },
+    {
+      "id": "fe-components-code", "category": "fe-components", "reason": "Komponente",
+      "fileText": ["@Component\\s*\\(|\\bdefineComponent\\(|from\\s+['\"]react['\"]"]
     }
   ]
 }

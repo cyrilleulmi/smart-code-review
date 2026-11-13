@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { ownerLabel } from './api';
+import { ComponentDiagram } from './component-diagram';
 import { Icon } from './icon';
 import { ReviewStore } from './review.store';
 
@@ -7,7 +8,7 @@ import { ReviewStore } from './review.store';
 @Component({
   selector: 'app-overview',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon],
+  imports: [Icon, ComponentDiagram],
   templateUrl: './overview.html',
   styleUrl: './overview.scss',
 })
@@ -18,7 +19,7 @@ export class Overview {
   protected readonly sending = signal(false);
 
   protected readonly pr = computed(() => this.store.bundle()!.pr);
-  protected readonly categories = computed(() =>
+  protected readonly allCategories = computed(() =>
     this.store.bundle()!.analysis.categories.map((c) => {
       const ids = c.groups.flatMap((g) => g.segmentIds);
       const tests = c.id === 'tests' ? this.store.bundle()!.analysis.tests ?? [] : [];
@@ -30,11 +31,22 @@ export class Overview {
         stats: c.id === 'tests' && tests.length
           ? `${tests.length} Testfälle · erreichen ${covered} geänderte Codestellen`
           : `${c.groups.length} ${c.id === 'flows' ? 'Flows' : 'Gruppen'} · ${new Set(ids).size} Blöcke`,
+        enabled: !this.store.disabledCategories().has(c.id),
       };
     }),
   );
   protected readonly generalComments = computed(() => this.store.comments().filter((c) => c.kind === 'issue'));
   protected readonly inlineCount = computed(() => this.store.comments().filter((c) => c.kind === 'review').length);
+  /** Switched-on categories in review order; switched-off ones are listed separately. */
+  protected readonly categories = computed(() => this.allCategories().filter((c) => c.enabled));
+  protected readonly disabled = computed(() => this.allCategories().filter((c) => !c.enabled));
+  protected readonly architecture = computed(() => this.store.bundle()!.analysis.architecture);
+
+  protected toggle(id: string, event: Event): void {
+    event.stopPropagation();
+    this.store.toggleCategory(id);
+  }
+
   /** Blocks that need more than one ok (shown at several places). */
   protected readonly multiPlaced = computed(() => this.store.bundle()!.analysis.segments.filter((s) => (s.places?.length ?? 0) > 1).length);
   protected readonly log = computed(() => [...this.store.log()].reverse().slice(0, 6));

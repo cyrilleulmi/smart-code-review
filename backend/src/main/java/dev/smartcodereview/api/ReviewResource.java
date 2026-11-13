@@ -9,11 +9,13 @@ import dev.smartcodereview.model.Model.PrRef;
 import dev.smartcodereview.model.Model.PullRequestSummary;
 import dev.smartcodereview.model.Model.ReviewBundle;
 import dev.smartcodereview.model.Model.ReviewState;
+import dev.smartcodereview.model.Model.Settings;
 import dev.smartcodereview.provider.ProviderException;
 import dev.smartcodereview.store.DataStore;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.QueryParam;
@@ -48,6 +50,19 @@ public class ReviewResource {
     }
 
     /** Resolves a PR/MR web URL (GitHub or GitLab) to {provider, owner, repo, number}. */
+    /** Switched-off categories (global, <data>/settings.json): hidden in the UI, their places need no ok. */
+    @GET
+    @Path("/settings")
+    public Settings settings() {
+        return service.settings();
+    }
+
+    @PUT
+    @Path("/settings")
+    public Settings saveSettings(Settings settings) {
+        return service.saveSettings(settings);
+    }
+
     @GET
     @Path("/resolve")
     public PrRef resolve(@QueryParam("url") String url) {

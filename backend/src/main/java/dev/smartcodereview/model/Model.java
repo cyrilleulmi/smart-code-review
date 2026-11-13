@@ -105,13 +105,16 @@ public final class Model {
      * kind: hunk | symbol | module. lineKeys: the changed lines this segment owns (markable).
      * places: ids of all groups that show this segment (e.g. "quick-wins/mapper", "flows/flow-2"); every
      * place needs its own "ok" (see ReviewState.okAt). testedBy: ids of test segments that reach this one.
+     * layer: domain | application | usecase | adapter when the project uses ports & adapters (else null).
+     * frontend: the file belongs to a web frontend (Angular, React, Vue, templates, ...).
      */
     @RegisterForReflection
     public record Segment(String id, String path, String language, String kind,
                           String symbol, String symbolKind, Integer startLine, Integer endLine,
                           String category, String group, String ruleId, String reason,
                           List<String> lineKeys, List<DisplayLine> lines,
-                          List<String> places, List<String> testedBy) {
+                          List<String> places, List<String> testedBy,
+                          String layer, boolean frontend) {
     }
 
     @RegisterForReflection
@@ -127,9 +130,12 @@ public final class Model {
     public record FlowStep(String segmentId, int order, int depth, String parentSegmentId) {
     }
 
-    /** line: new-file line in the caller where the callee is referenced. */
+    /**
+     * line: new-file line in the caller where the callee is referenced. kind: "call" (name reference) or
+     * "http" (a frontend REST call matched to a backend endpoint; via is then e.g. "PUT /api/players/{}").
+     */
     @RegisterForReflection
-    public record FlowEdge(String from, String to, Integer line, String via) {
+    public record FlowEdge(String from, String to, Integer line, String via, String kind) {
     }
 
     @RegisterForReflection
@@ -158,10 +164,43 @@ public final class Model {
                            List<TestCoverage> covers) {
     }
 
+    /**
+     * style: "hexagonal" when the repository is organised as ports & adapters (domain / application / use
+     * cases / adapters), else null. evidence: the directories that show it.
+     */
+    @RegisterForReflection
+    public record ArchitectureInfo(String style, List<String> evidence) {
+    }
+
+    /**
+     * A component of the change: one class/module, i.e. the files of one name in one folder (player-view.ts,
+     * .html and .scss together). area: column in the component diagram - frontend | adapter-in | api | usecase |
+     * application | logic | domain | adapter-out | data | test.
+     */
+    @RegisterForReflection
+    public record Component(String id, String name, List<String> paths, String area, List<String> segmentIds) {
+    }
+
+    /** Calls between components (aggregated segment edges); http = via a REST call. */
+    @RegisterForReflection
+    public record ComponentEdge(String from, String to, int calls, boolean http) {
+    }
+
     @RegisterForReflection
     public record Analysis(int schemaVersion, String generatedAt, String headSha, String rulesHash,
                            List<Segment> segments, List<Category> categories, List<Flow> flows,
-                           List<TestInfo> tests) {
+                           List<TestInfo> tests, ArchitectureInfo architecture,
+                           List<Component> components, List<ComponentEdge> componentEdges) {
+    }
+
+    /** Directories of the repository at the PR head (to recognise its architecture). */
+    @RegisterForReflection
+    public record RepoStructure(List<String> directories, boolean truncated) {
+    }
+
+    /** User settings in <data>/settings.json. Disabled categories are hidden and need no ok. */
+    @RegisterForReflection
+    public record Settings(List<String> disabledCategories) {
     }
 
     // ---------------------------------------------------------------- local review state

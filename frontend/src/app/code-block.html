@@ -12,6 +12,9 @@
   @if (seg.startLine) {
     <span class="lines">:{{ seg.startLine }}</span>
   }
+  @if (seg.layer) {
+    <span class="chip layer" title="Schicht (Ports &amp; Adapters)">{{ layerLabel(seg.layer) }}</span>
+  }
   <span class="chip" [class]="'chip cat-' + seg.category" [title]="seg.reason">{{ seg.category === 'logic' ? 'Logik' : seg.category === 'tests' ? (seg.symbolKind === 'test' ? 'Testfall' : 'Test') : seg.group }}</span>
   @if (calledBy(); as by) {
     <button class="called-by" type="button" (click)="$event.stopPropagation(); calledByClick.emit()">

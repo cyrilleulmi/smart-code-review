@@ -9,6 +9,7 @@ or text. The app re-reads files on every request, so your edits show up in the U
 AGENTS.md              this file (rewritten on every app start)
 rules.default.json     built-in classification rules (rewritten on start; reference only)
 rules.json             OPTIONAL custom rules; takes precedence; edits trigger re-analysis
+settings.json          switched-off categories {"disabledCategories": [...]}: hidden, their places need no ok
 reviews/<provider>/<owner>/<repo>/<number>/      provider: github | gitlab; nested GitLab groups: group~sub
   snapshot.json        PR metadata + parsed diff (frozen when the PR was first opened)
   sources/<path>       new version of each analysed file
@@ -33,6 +34,10 @@ Only changed lines can be marked. Valid keys per segment: `analysis.json` → `s
    A segment at several places needs one ok per place.
 5. `tests[]` → per changed test case: `subjects` (components under test) and `covers` (reached segments,
    `direct` or `via` another segment, `line` = call site in the test). `segments[].testedBy` is the reverse.
+6. `architecture.style` = "hexagonal" when the repo uses ports & adapters; then `segments[].layer` is
+   domain | application | usecase | adapter. `segments[].frontend` marks web frontend code.
+   `flows[].edges[].kind` = "http" for REST calls from the frontend into a backend endpoint.
+7. `components[]` / `componentEdges[]`: changed files grouped into components and the calls between them.
 
 ## Marking lines as ok
 

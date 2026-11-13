@@ -3,7 +3,10 @@ package dev.smartcodereview.analysis;
 import dev.smartcodereview.analysis.SymbolExtractor.Symbol;
 import dev.smartcodereview.model.Model;
 import dev.smartcodereview.model.Model.Analysis;
+import dev.smartcodereview.model.Model.ArchitectureInfo;
 import dev.smartcodereview.model.Model.Category;
+import dev.smartcodereview.model.Model.Component;
+import dev.smartcodereview.model.Model.ComponentEdge;
 import dev.smartcodereview.model.Model.DiffFile;
 import dev.smartcodereview.model.Model.DiffLine;
 import dev.smartcodereview.model.Model.DisplayLine;
@@ -22,6 +25,7 @@ import dev.smartcodereview.model.Model.TestSubject;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.Deque;
 import java.util.HashMap;
@@ -45,7 +49,12 @@ import java.util.stream.Collectors;
  *       point gets a <em>flow</em> with everything it reaches, in call order. A function reached from two entry
  *       points is part of both flows.</li>
  *   <li>Changed test cases are linked to the changed code they reach through the same call graph.</li>
+ *   <li>Frontend REST calls are matched to backend endpoints (http edges), so a flow can run from a component
+ *       through the API client into the backend.</li>
+ *   <li>Ports &amp; adapters projects get a layer per segment (domain, use case, application, adapter); frontend
+ *       segments get an aspect (routing, state, API, forms, components, templates). Both are extra categories.</li>
  *   <li>Every segment lists its <em>places</em> (all groups that show it); each place needs its own "ok".</li>
+ *   <li>Changed files are combined into <em>components</em> with the calls between them (overview diagram).</li>
  * </ol>
  */
 public final class Analyzer {
@@ -65,9 +74,14 @@ public final class Analyzer {
     private static final Pattern MODULE_SYNTAX = Pattern.compile("^\\s*export\\b|\\brequire\\s*\\(|\\bmodule\\.exports\\b");
     private static final Pattern ENTRY_LAYER = Pattern.compile("(?i)(component|page|route|controller|resource|endpoint|handler|view|screen|app/|pages/|api/)");
     private static final Pattern DEEP_LAYER = Pattern.compile("(?i)(repository|repo|dao|store|db|database|client|gateway|adapter|lib/|utils?/|helpers?/)");
+    private static final Pattern API_LAYER = Pattern.compile("(?i)(resource|controller|endpoint|handler|route|/api/|/rest/|/web/)");
+    private static final Pattern DOMAIN_DIR = Pattern.compile("(?i)/(domain|model|models|entity|entities)/");
+    /** Architecture categories (rules.json ids) and the layer they show. */
+    private static final Map<String, String> LAYER_CATEGORIES = Map.of("domain", Structure.DOMAIN, "usecases", Structure.USECASE,
+            "application", Structure.APPLICATION, "adapters", Structure.ADAPTER);
 
     /** Bump when the analysis logic changes, so stored analyses are recomputed. */
-    public static final int VERSION = 10;
+    public static final int VERSION = 12;
 
     private final Rules rules;
 
@@ -105,6 +119,9 @@ public final class Analyzer {
         String category;
         String group;
         String reason;
+        boolean frontend;
+        String layer; // ports & adapters layer, null if none
+        Rules.Rule aspect; // frontend aspect (extra category), null if none
         final Map<Integer, List<LineRef>> refs = new HashMap<>();
 
         int sortLine() {
@@ -122,6 +139,11 @@ public final class Analyzer {
     // ------------------------------------------------------------------ analysis
 
     public Analysis analyze(Snapshot snapshot, Map<String, String> sources) {
+        return analyze(snapshot, sources, null);
+    }
+
+    /** directories: all directories of the repository (to recognise ports &amp; adapters); null = only the changed ones. */
+    public Analysis analyze(Snapshot snapshot, Map<String, String> sources, Collection<String> directories) {
         List<Work> works = new ArrayList<>();
         for (DiffFile file : snapshot.files()) {
             segmentFile(file, sources.get(file.path()), works);
@@ -143,7 +165,31 @@ public final class Analyzer {
             }
         }
 
+        Set<String> dirs = new LinkedHashSet<>(directories == null ? List.of() : directories);
+        for (DiffFile f : snapshot.files()) {
+            for (String d = dirOf(f.path()); !d.isEmpty(); d = dirOf(d)) {
+                dirs.add(d);
+            }
+        }
+        List<String> evidence = Structure.hexagonalEvidence(dirs);
+        for (Work w : works) {
+            String source = sources.get(w.file.path());
+            w.frontend = Structure.isFrontend(w.file.path(), source);
+            boolean extras = (w.rule == null || w.rule.extras()) && !isTest(w);
+            if (!extras) {
+                continue;
+            }
+            if (!evidence.isEmpty() && !w.frontend && Languages.hasSymbols(w.file.language())) {
+                w.layer = Structure.layerOf(w.file.path());
+            }
+            if (w.frontend) {
+                w.aspect = rules.aspectFor(w.file.path(), w.symbol == null ? null : w.symbol.name(),
+                        w.symbol == null ? null : w.symbol.kind(), segmentText(w), source, w.changed);
+            }
+        }
+
         List<FlowEdge> edges = findEdges(works);
+        edges.addAll(findHttpEdges(works));
         List<Flow> flows = buildFlows(works, edges);
         Set<String> inFlows = flows.stream().flatMap(f -> f.steps().stream()).map(FlowStep::segmentId).collect(Collectors.toSet());
         for (Work w : works) {
@@ -175,8 +221,19 @@ public final class Analyzer {
         for (Work w : works) {
             segments.add(toSegment(w, places.getOrDefault(w.id, List.of()), testedBy.getOrDefault(w.id, List.of())));
         }
+        ArchitectureInfo architecture = new ArchitectureInfo(evidence.isEmpty() ? null : "hexagonal", evidence);
+        Map<String, String> componentOf = new HashMap<>();
+        List<Component> components = components(works, !evidence.isEmpty(), componentOf);
         return new Analysis(Model.SCHEMA_VERSION, Instant.now().toString(), snapshot.pr().headSha(), fingerprint(rules),
-                segments, categories, flows, tests);
+                segments, categories, flows, tests, architecture, components, componentEdges(edges, componentOf));
+    }
+
+    /** The code of a segment as text: the whole symbol, or the changed lines of a hunk/module segment. */
+    private static String segmentText(Work w) {
+        if (w.ctx != null && w.symbol != null) {
+            return String.join("\n", w.ctx.text.lines.subList(w.symbol.startLine() - 1, Math.min(w.symbol.endLine(), w.ctx.text.lines.size())));
+        }
+        return w.changed.stream().map(DiffLine::text).collect(Collectors.joining("\n"));
     }
 
     private static boolean isTest(Work w) {
@@ -377,12 +434,85 @@ public final class Analyzer {
                 }
                 Integer line = firstReference(a, b, lines);
                 if (line != null) {
-                    edges.add(new FlowEdge(a.id, b.id, line, b.symbol.name()));
+                    edges.add(new FlowEdge(a.id, b.id, line, b.symbol.name(), "call"));
                     a.refs.computeIfAbsent(line, k -> new ArrayList<>()).add(new LineRef(b.id, b.label()));
                 }
             }
         }
         return edges;
+    }
+
+    /**
+     * REST across the stack: HTTP calls with a literal URL in one segment matched to an endpoint in another
+     * (JAX-RS/Spring annotations, Next.js route files, Express/Go route registrations).
+     */
+    private List<FlowEdge> findHttpEdges(List<Work> works) {
+        record Target(Work work, Http.Endpoint endpoint) {
+        }
+        List<Target> targets = new ArrayList<>();
+        for (Work b : works) {
+            if (b.ctx == null || isTest(b)) {
+                continue;
+            }
+            List<String> raw = b.ctx.text.lines;
+            if (b.symbol != null && b.symbol.isCallable()) {
+                Http.Endpoint e = Http.annotated(head(raw, b.symbol), classHead(b));
+                if (e == null) {
+                    e = Http.fileRoute(b.file.path(), b.symbol.name());
+                }
+                if (e != null) {
+                    targets.add(new Target(b, e));
+                }
+            }
+            int from = b.symbol != null ? b.symbol.startLine() - 1 : b.anchors.values().stream().min(Integer::compare).orElse(1) - 1;
+            int to = b.symbol != null ? b.symbol.endLine() - 1 : b.anchors.values().stream().max(Integer::compare).orElse(1) - 1;
+            for (int i = Math.max(0, from); i <= Math.min(to, raw.size() - 1); i++) {
+                for (Http.Endpoint e : Http.registered(raw.get(i))) {
+                    targets.add(new Target(b, e));
+                }
+            }
+        }
+        List<FlowEdge> edges = new ArrayList<>();
+        if (targets.isEmpty()) {
+            return edges;
+        }
+        Set<String> seen = new HashSet<>();
+        for (Work a : works) {
+            if (a.ctx == null || isTest(a)) {
+                continue;
+            }
+            for (Http.Call call : Http.calls(a.ctx.text.lines, searchLinesOf(a, works))) {
+                for (Target t : targets) {
+                    if (t.work() != a && t.work().file != a.file && Http.matches(call, t.endpoint()) && seen.add(a.id + ">" + t.work().id)) {
+                        edges.add(new FlowEdge(a.id, t.work().id, call.line(), t.endpoint().label(), "http"));
+                        a.refs.computeIfAbsent(call.line(), k -> new ArrayList<>())
+                                .add(new LineRef(t.work().id, t.endpoint().label() + " → " + t.work().label()));
+                    }
+                }
+            }
+        }
+        return edges;
+    }
+
+    /** Annotation and declaration lines of a symbol (up to the line that opens its body). */
+    private static List<String> head(List<String> raw, Symbol s) {
+        List<String> result = new ArrayList<>();
+        for (int i = s.startLine() - 1; i < Math.min(raw.size(), s.endLine()); i++) {
+            result.add(raw.get(i));
+            if (raw.get(i).contains("{")) {
+                break;
+            }
+        }
+        return result;
+    }
+
+    private static List<String> classHead(Work w) {
+        String container = w.symbol.container();
+        if (container == null) {
+            return List.of();
+        }
+        return w.ctx.symbols.stream().filter(s -> s.kind().equals("class") && s.name().equals(container)).findFirst()
+                .map(s -> head(w.ctx.text.lines, s)).orElse(List.of());
     }
 
     /**
@@ -662,7 +792,9 @@ public final class Analyzer {
         works.forEach(w -> byId.put(w.id, w));
         Map<String, List<FlowEdge>> outgoing = new HashMap<>();
         for (FlowEdge e : edges) {
-            outgoing.computeIfAbsent(e.from(), k -> new ArrayList<>()).add(e);
+            if (!"http".equals(e.kind())) { // unit tests mock HTTP, they do not reach the backend
+                outgoing.computeIfAbsent(e.from(), k -> new ArrayList<>()).add(e);
+            }
         }
         outgoing.values().forEach(l -> l.sort(Comparator.comparing(e -> e.line() == null ? 0 : e.line())));
 
@@ -771,7 +903,7 @@ public final class Analyzer {
                 s == null ? null : s.displayName(), s == null ? null : s.kind(),
                 s == null ? null : s.startLine(), s == null ? null : s.endLine(),
                 w.category, w.group, w.rule == null ? null : w.rule.id(), w.reason, List.copyOf(own), lines,
-                List.copyOf(places), List.copyOf(testedBy));
+                List.copyOf(places), List.copyOf(testedBy), w.layer, w.frontend);
     }
 
     /** Lines of the new file in [start, end] with deletions woven in; long unchanged stretches collapse to gaps. */
@@ -824,11 +956,21 @@ public final class Analyzer {
         List<Category> result = new ArrayList<>();
         for (Rules.CategoryDef def : rules.categories) {
             List<Group> groups = new ArrayList<>();
+            boolean aspectCategory = rules.aspects.stream().anyMatch(r -> r.category().equals(def.id()));
             if (def.id().equals("flows")) {
                 for (Flow f : flows) {
                     groups.add(new Group("flows/" + f.id(), f.title(), f.steps().size() + " Schritte", f.id(),
                             f.steps().stream().map(FlowStep::segmentId).toList()));
                 }
+            } else if (LAYER_CATEGORIES.containsKey(def.id()) || aspectCategory) {
+                // extra categories: grouped by file; adapters by direction (incoming / outgoing)
+                String layer = LAYER_CATEGORIES.get(def.id());
+                Map<String, List<String>> byGroup = new LinkedHashMap<>();
+                works.stream()
+                        .filter(w -> layer != null ? layer.equals(w.layer) : w.aspect != null && w.aspect.category().equals(def.id()))
+                        .sorted(Comparator.comparing((Work w) -> w.file.path()))
+                        .forEach(w -> byGroup.computeIfAbsent(extraGroup(w, layer), k -> new ArrayList<>()).add(w.id));
+                byGroup.forEach((label, ids) -> groups.add(new Group(def.id() + "/" + slug(label), label, null, null, ids)));
             } else {
                 Map<String, List<String>> byGroup = new LinkedHashMap<>();
                 List<String> groupOrder = rules.rules.stream().map(Rules.Rule::group).distinct().toList();
@@ -842,6 +984,110 @@ public final class Analyzer {
                 result.add(new Category(def.id(), def.label(), def.description(), def.icon(), groups));
             }
         }
+        return result;
+    }
+
+    private static String extraGroup(Work w, String layer) {
+        if (Structure.ADAPTER.equals(layer)) {
+            String dir = Structure.adapterDirection(w.file.path());
+            return "in".equals(dir) ? "Eingehend (REST, UI, …)" : "out".equals(dir) ? "Ausgehend (Persistenz, Clients, …)" : "Weitere Adapter";
+        }
+        return w.file.path();
+    }
+
+    // ------------------------------------------------------------------ components
+
+    /**
+     * Groups the changed code into components (files with the same name in the same folder) and assigns each a
+     * column of the overview diagram. componentOf receives segment id -> component id.
+     */
+    private static List<Component> components(List<Work> works, boolean hexagonal, Map<String, String> componentOf) {
+        Map<String, List<Work>> byKey = new LinkedHashMap<>();
+        for (Work w : works) {
+            boolean code = Languages.hasSymbols(w.file.language()) || (w.frontend && "xml".equals(w.file.language()));
+            if (code && (w.rule == null || w.rule.extras() || isTest(w))) {
+                byKey.computeIfAbsent(Structure.componentKey(w.file.path()), k -> new ArrayList<>()).add(w);
+            }
+        }
+        for (Work w : works) { // styles and templates join the component of the same name
+            String key = Structure.componentKey(w.file.path());
+            if (byKey.containsKey(key) && !byKey.get(key).contains(w)) {
+                byKey.get(key).add(w);
+            }
+        }
+        List<Component> result = new ArrayList<>();
+        byKey.forEach((key, members) -> {
+            members.forEach(w -> componentOf.put(w.id, key));
+            List<String> paths = Structure.unique(members.stream().map(w -> w.file.path()).toList());
+            result.add(new Component(key, componentName(key, members), paths, area(members, hexagonal),
+                    members.stream().map(w -> w.id).toList()));
+        });
+        return result;
+    }
+
+    /**
+     * The class named like the file (PlayerResource.java), else the class most segments belong to, else the file
+     * name (local_config). Tests keep their file name so they differ from the component they test.
+     */
+    private static String componentName(String key, List<Work> members) {
+        String stem = key.substring(key.lastIndexOf('/') + 1);
+        if (members.stream().allMatch(Analyzer::isTest) || members.stream().anyMatch(w -> w.symbol != null
+                && (stem.equals(w.symbol.name()) || stem.equals(w.symbol.container())))) {
+            return stem;
+        }
+        Map<String, Long> containers = members.stream()
+                .map(w -> w.symbol == null ? null : w.symbol.kind().equals("class") ? w.symbol.name() : w.symbol.container())
+                .filter(c -> c != null && !c.contains(" "))
+                .collect(Collectors.groupingBy(c -> c, LinkedHashMap::new, Collectors.counting()));
+        return containers.entrySet().stream().max(Map.Entry.comparingByValue()).map(Map.Entry::getKey)
+                .orElse(key.substring(key.lastIndexOf('/') + 1));
+    }
+
+    private static String area(List<Work> members, boolean hexagonal) {
+        if (members.stream().allMatch(Analyzer::isTest)) {
+            return "test";
+        }
+        if (members.stream().anyMatch(w -> w.frontend)) {
+            return "frontend";
+        }
+        String path = members.getFirst().file.path();
+        String layer = members.stream().map(w -> w.layer).filter(l -> l != null).findFirst()
+                .orElse(hexagonal ? Structure.layerOf(path) : null);
+        if (layer != null) {
+            return switch (layer) {
+                case Structure.ADAPTER -> "out".equals(Structure.adapterDirection(path)) ? "adapter-out" : "adapter-in";
+                case Structure.USECASE -> "usecase";
+                case Structure.APPLICATION -> "application";
+                default -> "domain";
+            };
+        }
+        if (API_LAYER.matcher(path).find()) {
+            return "api";
+        }
+        if (DOMAIN_DIR.matcher("/" + path).find()) {
+            return "domain";
+        }
+        return DEEP_LAYER.matcher(path).find() ? "data" : "logic";
+    }
+
+    private static List<ComponentEdge> componentEdges(List<FlowEdge> edges, Map<String, String> componentOf) {
+        Map<String, int[]> calls = new LinkedHashMap<>();
+        Map<String, Boolean> http = new HashMap<>();
+        for (FlowEdge e : edges) {
+            String a = componentOf.get(e.from());
+            String b = componentOf.get(e.to());
+            if (a == null || b == null || a.equals(b)) {
+                continue;
+            }
+            String k = a + "\u0000" + b;
+            calls.computeIfAbsent(k, x -> new int[1])[0]++;
+            http.merge(k, "http".equals(e.kind()), Boolean::logicalOr);
+        }
+        List<ComponentEdge> result = new ArrayList<>();
+        calls.forEach((k, n) -> {
+            String[] ab = k.split("\u0000");
+            result.add(new ComponentEdge(ab[0], ab[1], n[0], http.get(k)));
+        });
         return result;
     }
 

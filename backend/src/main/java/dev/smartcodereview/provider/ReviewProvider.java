@@ -1,5 +1,6 @@
 package dev.smartcodereview.provider;
 
+import dev.smartcodereview.model.Model;
 import dev.smartcodereview.model.Model.Comment;
 import dev.smartcodereview.model.Model.NewComment;
 import dev.smartcodereview.model.Model.PrRef;
@@ -38,6 +39,9 @@ public interface ReviewProvider {
 
     /** Fetches PR metadata and the full diff. */
     Snapshot fetchSnapshot(PrRef ref);
+
+    /** All directories of the repository at a commit (for architecture detection); may be truncated. */
+    Model.RepoStructure directories(PrRef ref, String sha);
 
     /** Content of a file at a commit, empty if missing/binary/too large. */
     Optional<String> fileContent(PrRef ref, String path, String sha);

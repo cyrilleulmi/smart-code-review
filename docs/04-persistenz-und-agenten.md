@@ -15,11 +15,13 @@ Alles, was SmartCodeReview lokal weiss, liegt als **lesbare Dateien** in einem V
 ├── AGENTS.md                 Kurzanleitung für Agenten (wird beim Start geschrieben)
 ├── rules.default.json        Mitgelieferte Regeln (wird beim Start überschrieben, nur zum Nachschlagen)
 ├── rules.json                OPTIONAL: eigene Regeln; hat Vorrang. Änderungen werden automatisch übernommen.
+├── settings.json             Ausgeschaltete Kategorien {"disabledCategories": [...]} (vom UI geschrieben)
 └── reviews/
     └── <github|gitlab>/<owner>/<repo>/<number>/      (GitLab-Gruppen: gruppe~untergruppe)
         ├── snapshot.json     PR-Metadaten + Diff (eingefroren)
         ├── sources/<pfad>    Quelltext der neuen Version (nur analysierte Dateien)
-        ├── analysis.json     Segmente, Kategorien, Flüsse (abgeleitet, jederzeit neu berechenbar)
+        ├── structure.json    Ordner des Repos am PR-Stand (für die Architektur-Erkennung, Cache)
+        ├── analysis.json     Segmente, Kategorien, Flüsse, Komponenten (abgeleitet, jederzeit neu berechenbar)
         ├── review.json       ◀ DEINE MARKIERUNGEN (die einzige Datei mit «echtem» Zustand)
         └── comments.json     Letzter Abruf der GitHub-Kommentare (Cache)
 ```
@@ -78,7 +80,10 @@ Alle Dateien sind UTF-8, eingerückt und werden **atomar** geschrieben (temporä
 }
 ```
 
-* `places`: alle Gruppen (`categories[].groups[].id`), die den Block zeigen. Mehr als ein Ort = mehrere Oks nötig.
+* `places`: alle Gruppen (`categories[].groups[].id`), die den Block zeigen. Mehr als ein Ort = mehrere Oks nötig. Orte in Kategorien aus `settings.json` → `disabledCategories` zählen nicht.
+* `layer` (`domain` | `application` | `usecase` | `adapter` | null) und `frontend` (true/false) pro Segment; `architecture.style` = `hexagonal`, wenn das Repo Ports & Adapters nutzt (`evidence` = Ordner).
+* `flows[].edges[].kind`: `call` oder `http` (dann `via` = `PUT /api/players/{}`).
+* `components[]` (`id`, `name`, `paths`, `area`, `segmentIds`) und `componentEdges[]` (`from`, `to`, `calls`, `http`): das Komponentendiagramm.
 * `tests[]`: pro geändertem Testfall die getesteten Komponenten (`how`: `name` = Namenskonvention, `call` = direkt aufgerufen) und die erreichten Segmente (`direct`, sonst `via` = das Segment, über das es erreicht wird; `line` = Aufrufstelle im Test). `testedBy` ist die Rückrichtung.
 
 `analysis.json` ist **abgeleitet**: löschen oder `POST …/reanalyse` berechnet sie neu. Sie wird auch automatisch neu berechnet, wenn sich `rules.json` oder die Analyzer-Version ändert (`rulesHash`).

@@ -6,6 +6,18 @@ Docker-Images: `culmi/smart-code-review:<version>` und `:latest` (= letztes Rele
 
 ## [Unreleased]
 
+### Neu
+- **Ports & Adapters:** Das Repository wird anhand seiner Ordner (`domain`, `application`, `port`, `usecase`, `adapter`, `infrastructure` …) geprüft. Ist es so aufgebaut, bekommt jede Klasse eine Schicht und es gibt die Kategorien *Domäne*, *Use Cases*, *Application Layer* und *Adapter* (eingehend / ausgehend).
+- **Frontend-Kategorien:** Routing & Navigation, Zustand & Stores, API-Anbindung, Formulare & Validierung, Komponenten-Logik, Templates & Markup (Regeln in `rules.json` → `aspects`).
+- **Kategorien ein-/ausschalten** (Übersicht, Review-Baum). Ausgeschaltete Kategorien sind ausgeblendet und brauchen kein Ok; gespeichert in `<data>/settings.json`, API `GET/PUT /api/settings`.
+- **Flows über REST:** HTTP-Aufrufe im Frontend (`http.put('/api/players/${id}')`, `fetch`, axios) werden mit Backend-Endpunkten verbunden (JAX-RS, Spring, Next.js-Route-Handler, Express, Go). Ein Flow läuft so von der Komponente über den API-Client ins Backend.
+- **Komponentendiagramm** auf der Übersicht: alle geänderten Komponenten in Spalten nach Schicht, Aufrufe und REST-Aufrufe dazwischen, Fokus-Knopf pro Komponente.
+- **Fokus im Flow-Diagramm:** Der Knopf im Knoten zeigt nur noch diesen Knoten und alles, was davon abhängt – im Diagramm und im Code.
+
+### Geändert
+- `analysis.json`: neue Felder `architecture`, `components`, `componentEdges`, `segments[].layer`, `segments[].frontend`, `flows[].edges[].kind`. Bestehende Analysen werden neu berechnet; neue Datei `structure.json` pro PR (Ordner des Repos).
+- Regeln: `aspects`, `extras`, `text`, `fileText`, `special: "markup"`.
+
 ## [0.3.0] – 2026-11-13
 
 ### Neu

@@ -19,7 +19,7 @@
   @for (n of rows(); track n.id) {
     @let p = progress(n);
     <div class="row" role="treeitem" [class]="'row d' + n.depth + ' ' + (n.css ?? '')" [class.selected]="isSelected(n)"
-         [class.done]="p.total > 0 && p.ok === p.total" [style.padding-left.px]="6 + n.depth * 16" (click)="open(n)" [title]="n.label">
+         [class.done]="p.total > 0 && p.ok === p.total" [style.padding-left.px]="6 + n.depth * 16" (click)="open(n)" [title]="n.title ?? n.label">
       <span class="chev" (click)="n.children?.length ? toggleOpen(n, $event) : null">
         @if (n.children?.length) {
           <app-icon [name]="isOpen(n) ? 'chevronDown' : 'chevronRight'" [size]="12" />
@@ -45,6 +45,11 @@
         } @else {
           <span class="cnt">{{ p.ok }}/{{ p.total }}</span>
         }
+        @if (tab() === 'categories' && n.depth === 0) {
+          <button type="button" class="mark" (click)="switchOff(n, $event)" title="Kategorie ausschalten (in der Übersicht wieder einschalten)">
+            <app-icon name="eyeOff" [size]="12" />
+          </button>
+        }
         <button type="button" class="mark" (click)="mark(n, $event)" [title]="p.ok === p.total ? 'Markierung entfernen' : 'Alles darin als ok markieren'">
           <app-icon name="check" [size]="12" />
         </button>
@@ -52,3 +57,7 @@
     </div>
   }
 </div>
+@if (tab() === 'categories' && store.disabledCategories().size) {
+  <p class="off-note">{{ store.disabledCategories().size }} {{ store.disabledCategories().size === 1 ? 'Kategorie' : 'Kategorien' }} ausgeschaltet –
+    <a href="javascript:void 0" (click)="store.select({ kind: 'overview' })">in der Übersicht einschalten</a></p>
+}

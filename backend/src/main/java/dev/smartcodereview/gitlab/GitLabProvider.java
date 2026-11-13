@@ -49,6 +49,7 @@ import java.util.regex.Pattern;
 public class GitLabProvider implements ReviewProvider {
 
     private static final int MAX_FILE_BYTES = 1_000_000;
+    private static final int MAX_TREE_PAGES = 30;
 
     @Inject
     ObjectMapper mapper;
@@ -192,6 +193,24 @@ public class GitLabProvider implements ReviewProvider {
             }
             return getJson(base + "/changes").path("changes");
         }
+    }
+
+    /** Directories via the paginated tree API; stops after MAX_TREE_PAGES pages (marked as truncated). */
+    @Override
+    public Model.RepoStructure directories(PrRef ref, String sha) {
+        List<String> dirs = new ArrayList<>();
+        for (int page = 1; page <= MAX_TREE_PAGES; page++) {
+            JsonNode items = getJson(projectPath(ref) + "/repository/tree?recursive=true&per_page=100&ref=" + sha + "&page=" + page);
+            items.forEach(n -> {
+                if ("tree".equals(n.path("type").asText())) {
+                    dirs.add(n.path("path").asText());
+                }
+            });
+            if (items.size() < 100) {
+                return new Model.RepoStructure(dirs, false);
+            }
+        }
+        return new Model.RepoStructure(dirs, true);
     }
 
     @Override

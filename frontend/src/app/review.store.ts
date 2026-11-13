@@ -92,15 +92,38 @@ export class ReviewStore {
     return map;
   });
 
-  /** "path\0key" -> places of the line (= places of its segment) */
+  /** Categories switched off by the user (global setting): hidden, and their places need no ok. */
+  readonly disabledCategories = signal<ReadonlySet<string>>(new Set());
+
+  /** Categories of the open PR that are switched on. */
+  readonly categories = computed(() =>
+    (this.bundle()?.analysis.categories ?? []).filter((c) => !this.disabledCategories().has(c.id)),
+  );
+
+  /** "path\0key" -> places of the line that count (= places of its segment in switched-on categories) */
   private readonly linePlaces = computed(() => {
     const map = new Map<string, string[]>();
+    const off = this.disabledCategories();
     for (const s of this.bundle()?.analysis.segments ?? []) {
+      const places = (s.places ?? []).filter((p) => !off.has(categoryOf(p)));
       for (const k of s.lineKeys) {
-        map.set(s.path + SEP + k, s.places ?? []);
+        map.set(s.path + SEP + k, places);
       }
     }
     return map;
+  });
+
+  /** Segments that only appear in switched-off categories: nothing to review there. */
+  private readonly ignored = computed(() => {
+    const off = this.disabledCategories();
+    const result = new Set<string>();
+    if (off.size === 0) return result;
+    for (const s of this.bundle()?.analysis.segments ?? []) {
+      if ((s.places?.length ?? 0) > 0 && s.places.every((p) => off.has(categoryOf(p)))) {
+        result.add(s.id);
+      }
+    }
+    return result;
   });
 
   /** All places (groups) by id, with a readable label and where to navigate. */
@@ -140,6 +163,7 @@ export class ReviewStore {
       next: (me) => this.me.set(me),
       error: (e) => this.error.set(errorMessage(e)),
     });
+    this.api.settings().subscribe({ next: (s) => this.disabledCategories.set(new Set(s.disabledCategories)) });
     this.loadPrs();
     const fromHash = parseHash(location.hash);
     if (fromHash) {
@@ -250,6 +274,20 @@ export class ReviewStore {
     }
   }
 
+  /** Switches a category on or off (saved globally in <data>/settings.json). */
+  toggleCategory(id: string): void {
+    const next = new Set(this.disabledCategories());
+    next.has(id) ? next.delete(id) : next.add(id);
+    this.disabledCategories.set(next);
+    const sel = this.selection();
+    if (next.has(id) && (sel.kind === 'category' ? sel.id === id : this.currentPlace()?.startsWith(id + '/'))) {
+      this.select({ kind: 'overview' });
+    }
+    this.api.saveSettings({ disabledCategories: [...next] }).subscribe({
+      error: (e) => this.error.set('Einstellung nicht gespeichert: ' + errorMessage(e)),
+    });
+  }
+
   setCollapsedAll(collapsed: boolean): void {
     this.collapseCommand.set({ collapsed, seq: (this.collapseCommand()?.seq ?? 0) + 1 });
   }
@@ -270,7 +308,8 @@ export class ReviewStore {
       return;
     }
     const current = this.currentPlace();
-    const place = seg.places.find((p) => p !== current) ?? seg.places[0];
+    const on = seg.places.filter((p) => !this.disabledCategories().has(categoryOf(p)));
+    const place = on.find((p) => p !== current) ?? on[0];
     if (place) {
       this.goToPlace(place, segmentId);
     } else {
@@ -350,10 +389,11 @@ export class ReviewStore {
     let total = 0;
     let done = 0;
     const seen = new Set<string>();
+    const ignored = this.ignored();
     for (const slot of slots) {
       const id = slot.segmentId + SEP + slot.place;
       const s = segs.get(slot.segmentId);
-      if (seen.has(id) || !s) {
+      if (seen.has(id) || !s || (slot.place == null && ignored.has(s.id))) {
         continue;
       }
       seen.add(id);
@@ -494,6 +534,11 @@ export class ReviewStore {
     clearTimeout(this.toastTimer);
     this.toastTimer = setTimeout(() => this.toast.set(null), 2600);
   }
+}
+
+function categoryOf(place: string): string {
+  const slash = place.indexOf('/');
+  return slash < 0 ? place : place.substring(0, slash);
 }
 
 function lineOf(key: string | undefined): number {

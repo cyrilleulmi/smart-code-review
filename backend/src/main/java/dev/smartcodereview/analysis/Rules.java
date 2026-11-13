@@ -16,10 +16,14 @@ public final class Rules {
     public record CategoryDef(String id, String label, String description, String icon) {
     }
 
-    /** symbols: files matched by `paths` are still split into functions/classes (e.g. tests into test cases). */
+    /**
+     * symbols: files matched by `paths` are still split into functions/classes (e.g. tests into test cases).
+     * extras: segments classified by this rule may additionally appear in architecture/frontend categories.
+     * text / fileText: (aspect rules) one pattern must occur in the segment's code / anywhere in the file.
+     */
     public record Rule(String id, String category, String group, String reason, List<Pattern> paths,
                        List<Pattern> lines, List<Pattern> require, Pattern symbol, List<String> kinds, String special,
-                       boolean symbols) {
+                       boolean symbols, boolean extras, List<Pattern> text, List<Pattern> fileText) {
 
         boolean matchesPath(String path) {
             return !paths.isEmpty() && paths.stream().anyMatch(p -> p.matcher(path).matches());
@@ -34,13 +38,19 @@ public final class Rules {
     private static final Pattern TRIVIAL = Pattern.compile(
             "^\\s*$|^\\s*[{}()\\[\\];,]*\\s*$|^\\s*(//|/\\*|\\*|\\*/|#).*$|^\\s*\\}\\s*(else\\b.*)?\\{?\\s*$");
 
+    /** Lines that look like markup (HTML/JSX): tags, closing tags, attribute lines. */
+    private static final Pattern MARKUP = Pattern.compile("^\\s*(</?[A-Za-z][\\w.:-]*|/?>|\\{/\\*|[\\w:@*\\[\\]().#-]+=\\s*[\"'{]).*$");
+
     public final List<CategoryDef> categories;
     public final List<Rule> rules;
+    /** Frontend aspect rules: give frontend segments one extra category (first match wins). */
+    public final List<Rule> aspects;
     public final String hash;
 
-    private Rules(List<CategoryDef> categories, List<Rule> rules, String hash) {
+    private Rules(List<CategoryDef> categories, List<Rule> rules, List<Rule> aspects, String hash) {
         this.categories = categories;
         this.rules = rules;
+        this.aspects = aspects;
         this.hash = hash;
     }
 
@@ -50,15 +60,20 @@ public final class Rules {
             categories.add(new CategoryDef(c.path("id").asText(), c.path("label").asText(),
                     c.path("description").asText(""), c.path("icon").asText("code")));
         }
+        return new Rules(categories, rules(root.path("rules")), rules(root.path("aspects")), hash);
+    }
+
+    private static List<Rule> rules(JsonNode array) {
         List<Rule> rules = new ArrayList<>();
-        for (JsonNode r : root.path("rules")) {
+        for (JsonNode r : array) {
             rules.add(new Rule(r.path("id").asText(), r.path("category").asText("quick-wins"),
                     r.path("group").asText(r.path("id").asText()), r.path("reason").asText(""),
                     patterns(r.path("paths"), true), patterns(r.path("lines"), false), patterns(r.path("require"), false),
                     r.hasNonNull("symbol") ? Pattern.compile(r.get("symbol").asText()) : null,
-                    strings(r.path("kinds")), r.path("special").asText(null), r.path("symbols").asBoolean(false)));
+                    strings(r.path("kinds")), r.path("special").asText(null), r.path("symbols").asBoolean(false),
+                    r.path("extras").asBoolean(true), patterns(r.path("text"), false), patterns(r.path("fileText"), false)));
         }
-        return new Rules(categories, rules, hash);
+        return rules;
     }
 
     private static List<String> strings(JsonNode array) {
@@ -142,6 +157,51 @@ public final class Rules {
             }
         }
         return null;
+    }
+
+    /**
+     * First aspect rule whose conditions all hold (each given list needs one match): path glob, symbol kind/name,
+     * a pattern in the segment's code, a pattern in the whole file, special "markup" (mostly HTML/JSX lines).
+     */
+    public Rule aspectFor(String path, String symbolName, String symbolKind, String segmentText, String fileText,
+                          Collection<DiffLine> changed) {
+        for (Rule r : aspects) {
+            if (!r.paths().isEmpty() && !r.matchesPath(path)) {
+                continue;
+            }
+            if (!r.kinds().isEmpty() && (symbolKind == null || !r.kinds().contains(symbolKind))) {
+                continue;
+            }
+            if (r.symbol() != null && (symbolName == null || !r.symbol().matcher(symbolName).find())) {
+                continue;
+            }
+            if (!r.text().isEmpty() && r.text().stream().noneMatch(p -> p.matcher(segmentText).find())) {
+                continue;
+            }
+            if (!r.fileText().isEmpty() && (fileText == null || r.fileText().stream().noneMatch(p -> p.matcher(fileText).find()))) {
+                continue;
+            }
+            if ("markup".equals(r.special()) && !mostlyMarkup(changed)) {
+                continue;
+            }
+            return r;
+        }
+        return null;
+    }
+
+    private static boolean mostlyMarkup(Collection<DiffLine> changed) {
+        int markup = 0, code = 0;
+        for (DiffLine l : changed) {
+            if (TRIVIAL.matcher(l.text()).matches()) {
+                continue;
+            }
+            if (MARKUP.matcher(l.text()).matches()) {
+                markup++;
+            } else {
+                code++;
+            }
+        }
+        return markup > 0 && markup >= code;
     }
 
     private static boolean allLinesMatch(Rule r, Collection<DiffLine> changed) {

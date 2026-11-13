@@ -18,6 +18,10 @@ import { ReviewStore } from './review.store';
 interface Node {
   step: FlowStep;
   segment: Segment;
+  /** step number in the whole flow (stays the same while focusing) */
+  no: number;
+  /** depth relative to the focused step */
+  depth: number;
   x: number;
   y: number;
 }
@@ -63,17 +67,46 @@ export class FlowView {
   /** Step-by-step mode: index of the only step shown, null = off. */
   protected readonly stepIndex = linkedSignal<string, number | null>({ source: () => this.flow().id, computation: () => null });
   protected readonly hideDone = signal(false);
+  /** Focused step: only it and everything it calls (directly or further down) are shown, in diagram and code. */
+  protected readonly focusRoot = linkedSignal<string, string | null>({ source: () => this.flow().id, computation: () => null });
+
+  /** The steps in this flow that the focused step reaches (all steps without focus). */
+  private readonly branch = computed<ReadonlySet<string> | null>(() => {
+    const root = this.focusRoot();
+    if (!root) return null;
+    const result = new Set([root]);
+    const edges = this.flow().edges;
+    let grew = true;
+    while (grew) {
+      grew = false;
+      for (const e of edges) {
+        if (result.has(e.from) && !result.has(e.to)) {
+          result.add(e.to);
+          grew = true;
+        }
+      }
+    }
+    return result;
+  });
 
   protected readonly nodes = computed<Node[]>(() => {
     const segs = this.store.segments();
-    return this.flow().steps
-      .filter((s) => segs.has(s.segmentId))
-      .map((step, row) => ({
-        step,
-        segment: segs.get(step.segmentId)!,
-        x: step.depth * (NODE_W + COL_GAP),
-        y: row * (NODE_H + ROW_GAP),
-      }));
+    const branch = this.branch();
+    const steps = this.flow().steps;
+    const rootDepth = branch ? steps.find((s) => s.segmentId === this.focusRoot())?.depth ?? 0 : 0;
+    return steps
+      .map((step, i) => ({ step, no: i + 1 }))
+      .filter(({ step }) => segs.has(step.segmentId) && (!branch || branch.has(step.segmentId)))
+      .map(({ step, no }, row) => {
+        const depth = Math.max(0, step.depth - rootDepth);
+        return { step, no, depth, segment: segs.get(step.segmentId)!, x: depth * (NODE_W + COL_GAP), y: row * (NODE_H + ROW_GAP) };
+      });
+  });
+
+  protected readonly focusName = computed(() => {
+    const root = this.focusRoot();
+    const seg = root ? this.store.segments().get(root) : null;
+    return seg ? this.nodeName(seg) : null;
   });
 
   protected readonly diagram = computed(() => {
@@ -92,7 +125,8 @@ export class FlowView {
         const d = back
           ? `M ${x1} ${y1} C ${x1 + 40} ${y1}, ${x1 + 40} ${y2}, ${b.x + NODE_W} ${y2}`
           : `M ${x1} ${y1} C ${x1 + COL_GAP / 2} ${y1}, ${x2 - COL_GAP / 2} ${y2}, ${x2 - 4} ${y2}`;
-        return { d, from: e.from, to: e.to, back };
+        const http = e.kind === 'http';
+        return { d, from: e.from, to: e.to, back, http, via: e.via, lx: (x1 + x2) / 2, ly: (y1 + y2) / 2 - 4 };
       });
     const width = Math.max(...nodes.map((n) => n.x + NODE_W), 0) + 48;
     const height = Math.max(...nodes.map((n) => n.y + NODE_H), 0) + 4;
@@ -101,7 +135,7 @@ export class FlowView {
 
   protected readonly stepOf = computed(() => {
     const map: Record<string, number> = {};
-    this.nodes().forEach((n, i) => (map[n.step.segmentId] = i + 1));
+    this.nodes().forEach((n) => (map[n.step.segmentId] = n.no));
     return map;
   });
 
@@ -160,26 +194,15 @@ export class FlowView {
     this.stepIndex.set(null);
   }
 
-  /** Shows only this step and everything it calls (its branch of the call tree). */
+  /** Shows only this step and everything it depends on (what it calls, and what those call), hides the rest. */
   protected focusOn(id: string, event: Event): void {
     event.stopPropagation();
-    const branch = new Set([id]);
-    let grew = true;
-    while (grew) {
-      grew = false;
-      for (const s of this.flow().steps) {
-        if (s.parentSegmentId && branch.has(s.parentSegmentId) && !branch.has(s.segmentId)) {
-          branch.add(s.segmentId);
-          grew = true;
-        }
-      }
-    }
-    this.hidden.set(new Set(this.flow().steps.map((s) => s.segmentId).filter((s) => !branch.has(s))));
-    this.hideDone.set(false);
+    this.focusRoot.set(this.focusRoot() === id ? null : id);
     this.stepIndex.set(null);
   }
 
   protected showAll(): void {
+    this.focusRoot.set(null);
     this.hidden.set(new Set());
     this.hideDone.set(false);
     this.stepIndex.set(null);
@@ -218,7 +241,8 @@ export class FlowView {
     const edge = this.flow().edges.find((e) => e.from === parent && e.to === node.step.segmentId);
     const caller = this.store.segments().get(parent);
     const name = caller?.symbol ?? caller?.path ?? parent;
-    return `aufgerufen von ${this.stepOf()[parent]} ${shortName(name)}${edge?.line ? ' · Zeile ' + edge.line : ''}`;
+    const how = edge?.kind === 'http' ? `per HTTP ${edge.via} ` : '';
+    return `${how}aufgerufen von ${this.stepOf()[parent] ?? ''} ${shortName(name)}${edge?.line ? ' · Zeile ' + edge.line : ''}`;
   }
 
   protected shortName(name: string | null): string {
@@ -251,7 +275,11 @@ export class FlowView {
 
   /** Jumps to a step (making it visible first); segments outside this flow are shown at their own place. */
   protected scrollTo(segmentId: string): void {
-    const index = this.nodes().findIndex((n) => n.step.segmentId === segmentId);
+    let index = this.nodes().findIndex((n) => n.step.segmentId === segmentId);
+    if (index < 0 && this.focusRoot() && this.flow().steps.some((s) => s.segmentId === segmentId)) {
+      this.focusRoot.set(null); // outside the focused branch: show the whole flow again
+      index = this.nodes().findIndex((n) => n.step.segmentId === segmentId);
+    }
     if (index < 0) {
       this.store.reveal(segmentId);
       return;

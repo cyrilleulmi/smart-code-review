@@ -152,6 +152,18 @@ public class GitHubProvider implements ReviewProvider {
     }
 
     @Override
+    public Model.RepoStructure directories(PrRef ref, String sha) {
+        JsonNode tree = getJson("/repos/" + ref.owner() + "/" + ref.repo() + "/git/trees/" + sha + "?recursive=1");
+        List<String> dirs = new ArrayList<>();
+        tree.path("tree").forEach(n -> {
+            if ("tree".equals(n.path("type").asText())) {
+                dirs.add(n.path("path").asText());
+            }
+        });
+        return new Model.RepoStructure(dirs, tree.path("truncated").asBoolean(false));
+    }
+
+    @Override
     public Optional<String> fileContent(PrRef ref, String path, String sha) {
         String encodedPath = URLEncoder.encode(path, StandardCharsets.UTF_8).replace("%2F", "/").replace("+", "%20");
         HttpResponse<byte[]> res = http.send(request("/repos/" + ref.owner() + "/" + ref.repo() + "/contents/" + encodedPath + "?ref=" + sha)
