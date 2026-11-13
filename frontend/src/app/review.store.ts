@@ -12,6 +12,8 @@ import {
   ReviewState,
   Segment,
   errorMessage,
+  prLabel,
+  providerInfo,
 } from './api';
 
 export type Selection =
@@ -55,6 +57,9 @@ export class ReviewStore {
     const pr = this.bundle()?.pr;
     return pr ? { provider: pr.provider, owner: pr.owner, repo: pr.repo, number: pr.number } : null;
   });
+
+  /** Label, sigil (#/!) and noun of the open PR's code host. */
+  readonly provider = computed(() => providerInfo(this.bundle()?.pr.provider));
 
   readonly segments = computed(() => {
     const map = new Map<string, Segment>();
@@ -101,7 +106,7 @@ export class ReviewStore {
   }
 
   open(pr: PrKey, selection: Selection = { kind: 'overview' }): void {
-    this.loading.set(`Lade ${pr.owner}/${pr.repo}#${pr.number} …`);
+    this.loading.set(`Lade ${prLabel(pr)} …`);
     this.error.set(null);
     this.api.bundle(pr).subscribe({
       next: (b) => this.applyBundle(b, selection),
@@ -112,12 +117,21 @@ export class ReviewStore {
     });
   }
 
+  /** Opens a PR/MR by its web URL (GitHub or GitLab, also ones not in the list). */
+  openUrl(url: string): void {
+    this.error.set(null);
+    this.api.resolve(url.trim()).subscribe({
+      next: (ref) => this.open(ref),
+      error: (e) => this.error.set(errorMessage(e)),
+    });
+  }
+
   reload(): void {
     const key = this.prKey();
     if (!key) {
       return;
     }
-    this.loading.set('Lade Pull Request neu von GitHub …');
+    this.loading.set(`Lade ${this.provider().noun} neu von ${this.provider().label} …`);
     this.api.reload(key).subscribe({
       next: (b) => {
         this.applyBundle(b, this.selection());
@@ -311,7 +325,7 @@ export class ReviewStore {
     this.api.postComment(key, comment).subscribe({
       next: (c) => {
         this.comments.set([...this.comments(), c]);
-        this.notify('Kommentar auf GitHub veröffentlicht');
+        this.notify(`Kommentar auf ${this.provider().label} veröffentlicht`);
         done(true);
       },
       error: (e) => {

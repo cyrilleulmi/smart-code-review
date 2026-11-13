@@ -11,7 +11,7 @@ interface Thread {
 
 /**
  * One review segment as an IntelliJ-like code block: gutter with ok-checkbox, old/new line numbers,
- * diff colours, syntax highlighting, inline GitHub comments, and call-site chips linking to other blocks.
+ * diff colours, syntax highlighting, inline review comments, and call-site chips linking to other blocks.
  */
 @Component({
   selector: 'app-code-block',
@@ -140,6 +140,8 @@ export class CodeBlock {
           path: this.segment().path,
           line: line!.type === 'del' ? line!.oldLine : line!.newLine,
           side: line!.type === 'del' ? ('LEFT' as const) : ('RIGHT' as const),
+          oldLine: line!.oldLine,
+          newLine: line!.newLine,
         };
     this.store.postComment(comment, (ok) => {
       this.sending.set(false);

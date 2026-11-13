@@ -131,7 +131,7 @@ public class DataStore {
     }
 
     private static String safe(String segment) {
-        if (!segment.matches("[A-Za-z0-9._-]+") || segment.equals("..") || segment.equals(".")) {
+        if (!segment.matches("[A-Za-z0-9._~-]+") || segment.equals("..") || segment.equals(".")) {
             throw new IllegalArgumentException("Invalid name: " + segment);
         }
         return segment;

@@ -14,7 +14,8 @@ design decisions are in `docs/` (German).
 - **Native-friendly backend:** records with `@RegisterForReflection`, Jackson trees for external JSON, new classpath
   resources must be added to `quarkus.native.resources.includes`.
 - **UI look:** IntelliJ New UI dark; use the CSS variables in `frontend/src/styles.scss`, no new colours.
-- **Provider-neutral:** only `github/` knows about GitHub; everything else talks to `ReviewProvider`.
+- **Provider-neutral:** only `github/` and `gitlab/` know their host; everything else talks to `ReviewProvider`.
+  GitLab merge requests are "pull requests" internally; nested groups are encoded as `group~sub` in `PrRef.owner`.
 
 ## Commands
 
@@ -22,5 +23,5 @@ design decisions are in `docs/` (German).
 cd frontend && npm run build          # writes into backend/src/main/resources/META-INF/resources
 cd backend && ./mvnw quarkus:dev      # http://localhost:8080
 cd backend && ./mvnw test             # unit tests (parser, symbols, analysis)
-docker compose up --build             # native image
+docker compose up --build             # native image (culmi/smart-code-review)
 ```

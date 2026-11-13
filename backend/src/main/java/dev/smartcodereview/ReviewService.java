@@ -6,6 +6,7 @@ import dev.smartcodereview.analysis.Analyzer;
 import dev.smartcodereview.analysis.Languages;
 import dev.smartcodereview.analysis.Rules;
 import dev.smartcodereview.model.Model;
+import dev.smartcodereview.model.Model.Account;
 import dev.smartcodereview.model.Model.Analysis;
 import dev.smartcodereview.model.Model.Comment;
 import dev.smartcodereview.model.Model.DiffFile;
@@ -81,16 +82,54 @@ public class ReviewService {
         return providerBeans.stream().map(ReviewProvider::id).toList();
     }
 
+    /** Open PRs of all providers with credentials; a failing provider is logged and skipped. */
     public List<PullRequestSummary> openPullRequests() {
         List<PullRequestSummary> result = new ArrayList<>();
         for (ReviewProvider p : providerBeans) {
-            for (PullRequestSummary s : p.openPullRequests()) {
-                PrRef ref = new PrRef(s.provider(), s.owner(), s.repo(), s.number());
-                result.add(new PullRequestSummary(s.provider(), s.owner(), s.repo(), s.number(), s.title(), s.author(),
-                        s.url(), s.draft(), s.createdAt(), s.updatedAt(), s.roles(), progress(ref).orElse(null)));
+            if (!p.hasCredentials()) {
+                continue;
+            }
+            try {
+                for (PullRequestSummary s : p.openPullRequests()) {
+                    PrRef ref = new PrRef(s.provider(), s.owner(), s.repo(), s.number());
+                    result.add(new PullRequestSummary(s.provider(), s.owner(), s.repo(), s.number(), s.title(), s.author(),
+                            s.url(), s.draft(), s.createdAt(), s.updatedAt(), s.roles(), progress(ref).orElse(null)));
+                }
+            } catch (ProviderException e) {
+                Log.warnf("%s: %s", p.label(), e.getMessage());
             }
         }
+        result.sort(Comparator.comparing(PullRequestSummary::updatedAt).reversed());
         return result;
+    }
+
+    /** One entry per provider: the signed-in user, or why there is none. */
+    public List<Account> accounts() {
+        List<Account> result = new ArrayList<>();
+        for (ReviewProvider p : providerBeans) {
+            if (!p.hasCredentials()) {
+                result.add(new Account(p.id(), p.label(), p.host(), null, "Kein Token konfiguriert"));
+                continue;
+            }
+            try {
+                result.add(new Account(p.id(), p.label(), p.host(), p.currentUser(), null));
+            } catch (ProviderException e) {
+                result.add(new Account(p.id(), p.label(), p.host(), null, e.getMessage()));
+            }
+        }
+        result.sort(Comparator.comparing((Account a) -> a.user() == null).thenComparing(Account::provider));
+        return result;
+    }
+
+    /** Turns a PR/MR web URL of any provider into a reference. */
+    public PrRef resolve(String url) {
+        for (ReviewProvider p : providerBeans) {
+            Optional<PrRef> ref = p.parseUrl(url);
+            if (ref.isPresent()) {
+                return ref.get();
+            }
+        }
+        throw new ProviderException(400, "Keine bekannte Pull- oder Merge-Request-URL: " + url);
     }
 
     // ------------------------------------------------------------------ bundle
@@ -274,9 +313,9 @@ public class ReviewService {
         if (comment.body() == null || comment.body().isBlank()) {
             throw new ProviderException(400, "Kommentar ist leer");
         }
-        String headSha = store.read(snapshotFile(ref), Snapshot.class).map(s -> s.pr().headSha())
+        Snapshot snapshot = store.read(snapshotFile(ref), Snapshot.class)
                 .orElseThrow(() -> new ProviderException(409, "PR zuerst öffnen"));
-        return provider(ref.provider()).postComment(ref, headSha, comment);
+        return provider(ref.provider()).postComment(ref, snapshot, comment);
     }
 
     // ------------------------------------------------------------------ rules & files

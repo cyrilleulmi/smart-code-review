@@ -9,7 +9,7 @@
     <span class="widget branch" [title]="b.pr.headRef + ' → ' + b.pr.baseRef">
       <app-icon name="branch" [size]="14" /> {{ b.pr.headRef }} <span class="dim">→ {{ b.pr.baseRef }}</span>
     </span>
-    <span class="pr-title" [title]="b.pr.title">#{{ b.pr.number }} {{ b.pr.title }}</span>
+    <span class="pr-title" [title]="b.pr.title">{{ store.provider().sigil }}{{ b.pr.number }} {{ b.pr.title }}</span>
   } @else {
     <span class="widget project"><span class="avatar-sq">S</span> SmartCodeReview</span>
   }
@@ -22,20 +22,22 @@
     <button type="button" class="tb-btn" (click)="store.reanalyse()" title="Neu analysieren (Regeln aus rules.json)">
       <app-icon name="analyse" />
     </button>
-    <button type="button" class="tb-btn" (click)="store.reload()" title="Von GitHub neu laden">
+    <button type="button" class="tb-btn" (click)="store.reload()" [title]="'Von ' + store.provider().label + ' neu laden'">
       <app-icon name="refresh" />
     </button>
-    <a class="tb-btn" [href]="b.pr.url" target="_blank" rel="noopener" title="Auf GitHub öffnen"><app-icon name="external" /></a>
+    <a class="tb-btn" [href]="b.pr.url" target="_blank" rel="noopener" [title]="'Auf ' + store.provider().label + ' öffnen'"><app-icon name="external" /></a>
     <button type="button" class="tb-btn" (click)="store.close()" title="Pull Request schliessen"><app-icon name="close" /></button>
   } @else {
     <button type="button" class="tb-btn" (click)="store.loadPrs()" title="Pull Requests neu laden"><app-icon name="refresh" /></button>
   }
-  @if (store.me(); as me) {
-    <span class="user" [title]="me.user.login">
-      @if (me.user.avatarUrl) {
-        <img [src]="me.user.avatarUrl" alt="" />
-      }
-    </span>
+  @for (a of store.me()?.accounts ?? []; track a.provider) {
+    @if (a.user; as u) {
+      <span class="user" [title]="a.label + ': ' + u.login">
+        @if (u.avatarUrl) {
+          <img [src]="u.avatarUrl" alt="" />
+        }
+      </span>
+    }
   }
 </header>
 
@@ -52,13 +54,13 @@
   @if (tool()) {
     <aside class="tool" [style.width.px]="toolWidth()">
       <div class="tool-head">
-        <span>{{ tool() === 'prs' ? 'Pull Requests' : 'Review' }}</span>
+        <span>{{ tool() === 'prs' ? 'Pull/Merge Requests' : 'Review' }}</span>
         <span class="spacer"></span>
         <button type="button" class="tb-btn small" (click)="tool.set(null)" title="Ausblenden"><app-icon name="close" [size]="13" /></button>
       </div>
       <div class="tool-body">
         @if (tool() === 'prs') {
-          <app-pr-list (click)="openPr($event)" />
+          <app-pr-list />
         } @else if (b) {
           <app-review-tree />
         } @else {
@@ -72,7 +74,7 @@
   <main class="editor">
     @if (content(); as c) {
       <div class="crumbs">
-        <span>{{ b!.pr.owner }}/{{ b!.pr.repo }}#{{ b!.pr.number }}</span>
+        <span>{{ prLabel(b!.pr) }}</span>
         @for (crumb of c.crumbs; track $index) {
           <app-icon name="chevronRight" [size]="11" />
           <span>{{ crumb }}</span>
@@ -102,7 +104,7 @@
         @if (store.loading(); as l) {
           <p class="loading"><span class="spinner"></span> {{ l }}</p>
         } @else {
-          <p class="hint">Wähle links einen Pull Request · <kbd>Alt</kbd>+<kbd>1</kbd> Pull Requests · <kbd>Alt</kbd>+<kbd>2</kbd> Review</p>
+          <p class="hint">Wähle links einen Pull/Merge Request oder füge eine URL ein · <kbd>Alt</kbd>+<kbd>1</kbd> Pull Requests · <kbd>Alt</kbd>+<kbd>2</kbd> Review</p>
         }
       </div>
     }
@@ -124,7 +126,9 @@
     <span>{{ store.me()?.dataDir ?? '' }}</span>
     <span class="spacer"></span>
   }
-  <span>{{ store.me()?.user?.login ?? 'nicht verbunden' }} · GitHub</span>
+  @for (a of store.me()?.accounts ?? []; track a.provider) {
+    <span [class.offline]="!a.user" [title]="a.error ?? a.host"><app-icon [name]="a.provider" [size]="12" /> {{ a.user?.login ?? 'kein Token' }}</span>
+  }
 </footer>
 
 @if (store.error(); as e) {

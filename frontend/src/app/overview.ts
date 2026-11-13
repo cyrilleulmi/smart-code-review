@@ -1,4 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { ownerLabel } from './api';
 import { Icon } from './icon';
 import { ReviewStore } from './review.store';
 
@@ -12,6 +13,7 @@ import { ReviewStore } from './review.store';
 })
 export class Overview {
   protected readonly store = inject(ReviewStore);
+  protected readonly ownerLabel = ownerLabel;
   protected readonly draft = signal('');
   protected readonly sending = signal(false);
 

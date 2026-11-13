@@ -50,7 +50,7 @@
           <span class="g-num">{{ line.newLine ?? '' }}</span>
           <span class="g-act">
             @if (line.inDiff && line.key) {
-              <button type="button" class="add-comment" (click)="openEditor(line)" title="Kommentar auf GitHub">
+              <button type="button" class="add-comment" (click)="openEditor(line)" [title]="'Kommentar auf ' + store.provider().label">
                 <app-icon name="comment" [size]="12" />
               </button>
             }
@@ -79,7 +79,7 @@
                   }
                   <div>
                     <div class="meta"><b>{{ c.author }}</b> · {{ time(c.createdAt) }}
-                      <a [href]="c.url" target="_blank" rel="noopener" title="Auf GitHub öffnen"><app-icon name="external" [size]="11" /></a>
+                      <a [href]="c.url" target="_blank" rel="noopener" [title]="'Auf ' + store.provider().label + ' öffnen'"><app-icon name="external" [size]="11" /></a>
                     </div>
                     <div class="body">{{ c.body }}</div>
                   </div>
@@ -104,7 +104,7 @@
         @if (editorKey() === line.key && line.key) {
           <div class="thread new">
             <div class="editor">
-              <textarea rows="3" placeholder="Kommentar zu Zeile {{ line.newLine ?? line.oldLine }} – wird sofort auf GitHub veröffentlicht (Ctrl+Enter)"
+              <textarea rows="3" placeholder="Kommentar zu Zeile {{ line.newLine ?? line.oldLine }} – wird sofort auf {{ store.provider().label }} veröffentlicht (Ctrl+Enter)"
                         [value]="draft()" (input)="input($event)" (keydown)="keydown($event, line)" autofocus></textarea>
               <div class="actions">
                 <button type="button" class="btn" (click)="cancel()">Abbrechen</button>

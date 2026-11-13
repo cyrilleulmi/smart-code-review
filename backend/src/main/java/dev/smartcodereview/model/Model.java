@@ -18,7 +18,11 @@ public final class Model {
 
     // ---------------------------------------------------------------- pull requests
 
-    /** Identifies a pull/merge request across providers. */
+    /**
+     * Identifies a pull/merge request across providers. owner is the GitHub owner or the GitLab namespace;
+     * nested GitLab groups are written with "~" instead of "/" (group~subgroup) so the ref fits in a URL
+     * path and a directory name.
+     */
     @RegisterForReflection
     public record PrRef(String provider, String owner, String repo, int number) {
         public String key() {
@@ -45,7 +49,8 @@ public final class Model {
             String title, String body, String author, String url, boolean draft, String state,
             String baseRef, String headRef, String baseSha, String headSha,
             String createdAt, String updatedAt,
-            int additions, int deletions, int changedFiles) {
+            int additions, int deletions, int changedFiles,
+            String startSha) {
     }
 
     @RegisterForReflection
@@ -163,8 +168,13 @@ public final class Model {
                           Long inReplyTo) {
     }
 
+    /**
+     * line/side address the line like GitHub does (RIGHT = new file, LEFT = old file). oldLine/newLine are
+     * both set for unchanged context lines - GitLab needs both to anchor a comment there.
+     */
     @RegisterForReflection
-    public record NewComment(String path, Integer line, String side, String body, Long inReplyTo) {
+    public record NewComment(String path, Integer line, String side, String body, Long inReplyTo,
+                             Integer oldLine, Integer newLine) {
     }
 
     // ---------------------------------------------------------------- api
@@ -179,7 +189,12 @@ public final class Model {
                                Analysis analysis, ReviewState state) {
     }
 
+    /** One configured code host. user is null when it has no credentials (error says why). */
     @RegisterForReflection
-    public record Me(User user, String dataDir, String providers) {
+    public record Account(String provider, String label, String host, User user, String error) {
+    }
+
+    @RegisterForReflection
+    public record Me(List<Account> accounts, String dataDir) {
     }
 }

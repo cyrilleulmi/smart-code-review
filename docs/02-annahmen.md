@@ -14,6 +14,9 @@ Es handelt sich um einen PoC. Die folgenden Punkte sind bewusst einfach gehalten
 | A6 | Kommentieren geht nur auf **Zeilen, die im GitHub-Diff liegen** (geänderte Zeilen und deren 3 Kontextzeilen). | Zeilen ausserhalb (z. B. aus der Funktionsansicht) haben keinen Kommentar-Knopf; GitHub würde sie ablehnen. |
 | A7 | **Markdown** in Kommentaren und PR-Beschreibung wird als Text angezeigt, nicht gerendert. | Gut lesbar, aber ohne Formatierung. |
 | A8 | Nur **Dark Theme** (IntelliJ New UI «Dark»). | Kein Light-Mode-Umschalter. |
+| A9a | **GitLab:** «Review-Anfragen» = offene MRs mit mir als *Reviewer* (`reviewer_username`), «Von mir» = `scope=created_by_me`. MRs, bei denen ich nur *Assignee* bin, erscheinen nicht. | In Teams, die Assignees statt Reviewer nutzen, fehlen MRs in der Liste (per URL öffnen geht immer). |
+| A9b | **GitLab-Gruppen** werden in Referenzen, URLs und Ordnernamen als `gruppe~untergruppe` geschrieben (z. B. `reviews/gitlab/acme~platform/shop/7/`). | Pfade bleiben eine Ebene tief und dateisystemtauglich. |
+| A9c | **Ohne GitLab-Token** lassen sich öffentliche MRs lesen (per URL), aber weder auflisten noch kommentieren. Ein GitLab-Self-managed-Server pro Instanz (`SCR_GITLAB_URL`). | Mehrere GitLab-Instanzen gleichzeitig sind nicht vorgesehen. |
 | A9 | **Review-Anfragen an Teams** werden über die GitHub-Suche `review-requested:@me` gefunden – nur direkte Anfragen sind sicher abgedeckt. | Team-Reviews können fehlen. |
 | A10 | Pro Suche **max. 100 PRs**, pro PR **max. 3000 Dateien** (GitHub-Limit), Dateien > 1 MB werden nicht geladen. | Genügt für normale Reviews. |
 

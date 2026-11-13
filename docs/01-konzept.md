@@ -33,6 +33,8 @@ Ein lokal startbares Werkzeug, das
 | Wie gelangen Kommentare zu GitHub? | **Sofort posten** (kein Entwurf / Pending Review) |
 | Native ohne lokales GraalVM? | Entwicklung im Quarkus-Dev-Mode (JVM); **Native-Build im Docker-Container** |
 | Test-PRs | In `spongecoach`, `camperquiz` und `stv-bero-website`, als Draft, klar mit **[TEST-MR]** markiert |
+| GitLab (Nachtrag 13.11.2026) | Zweiter Provider neben GitHub: gitlab.com und self-managed, Merge Requests werden wie Pull Requests behandelt |
+| Verteilung | Natives Image auf Docker Hub: `culmi/smart-code-review` |
 
 ## Kernbegriffe
 

@@ -300,6 +300,10 @@
 
 /* ------------------------------------------------------------- status bar */
 
+.status .offline {
+  color: var(--fg-dim);
+}
+
 .status {
   display: flex;
   align-items: center;

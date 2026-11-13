@@ -21,7 +21,7 @@
     {
       "id": "tests", "category": "tests", "group": "Tests",
       "reason": "Test-Datei",
-      "paths": ["**/*.spec.*", "**/*.test.*", "**/__tests__/**", "**/test/**", "**/tests/**", "**/e2e/**", "**/*Test.java", "**/*IT.java"]
+      "paths": ["**/*.spec.*", "**/*.test.*", "**/*_test.go", "**/*_test.py", "**/test_*.py", "**/__tests__/**", "**/test/**", "**/tests/**", "**/e2e/**", "**/*Test.java", "**/*IT.java"]
     },
     {
       "id": "styles", "category": "styles", "group": "Styles & Assets",

@@ -120,7 +120,7 @@ class AnalyzerTest {
 
     private static PullRequestInfo info() {
         return new PullRequestInfo("github", "o", "r", 1, "t", "", "me", "", false, "open", "main", "feature",
-                "base", "head", "", "", 0, 0, 0);
+                "base", "head", "", "", 0, 0, 0, null);
     }
 
     private static Rules defaultRules() throws Exception {

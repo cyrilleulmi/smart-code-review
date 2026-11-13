@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, HostListener, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, HostListener, computed, effect, inject, signal, untracked } from '@angular/core';
+import { prLabel } from './api';
 import { FlowView } from './flow-view';
 import { GroupView } from './group-view';
 import { Icon } from './icon';
@@ -79,24 +80,25 @@ export class App {
     }
   });
 
+  protected readonly prLabel = prLabel;
   private dragStart: { x: number; width: number } | null = null;
 
   constructor() {
     this.store.init();
-    if (location.hash.length > 2) {
-      this.tool.set('review');
-    }
+    // Switch to the review tool window whenever another PR has been opened.
+    let lastPr: string | null = null;
+    effect(() => {
+      const key = this.store.prKey();
+      const id = key ? prLabel(key) : null;
+      if (id && id !== lastPr) {
+        untracked(() => this.tool.set('review'));
+      }
+      lastPr = id;
+    });
   }
 
   protected toggleTool(t: ToolWindow): void {
     this.tool.set(this.tool() === t ? null : t);
-  }
-
-  /** Clicking a PR in the list switches to the review tool window. */
-  protected openPr(event: Event): void {
-    if ((event.target as HTMLElement).closest('.item')) {
-      this.tool.set('review');
-    }
   }
 
   protected startDrag(event: PointerEvent): void {

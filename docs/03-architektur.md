@@ -16,7 +16,9 @@
 | Klasse | Aufgabe |
 |---|---|
 | `provider/ReviewProvider` | Schnittstelle zu einem Code-Host: offene PRs, Snapshot, Dateiinhalt, Kommentare lesen/schreiben. Alles darüber ist Provider-neutral. |
-| `github/GitHubProvider` | GitHub-REST über `java.net.http`; Token aus Config/Env oder `gh auth token`. |
+| `github/GitHubProvider` | GitHub-REST; Token aus Config/Env oder `gh auth token`. |
+| `gitlab/GitLabProvider` | GitLab-REST v4 (gitlab.com oder self-managed): MRs, `/diffs` (Fallback `/changes`), Rohdateien, Discussions; Inline-Kommentare mit `position` (base/start/head SHA). |
+| `provider/JsonHttp`, `provider/Tokens` | Gemeinsames JSON-über-HTTP und Token-Suche (Config → Env → CLI). |
 | `diff/PatchParser` | Zerlegt GitHubs Unified-Diff pro Datei in Hunks und nummerierte Zeilen. |
 | `analysis/CodeText` | Mini-Lexer: Kopie des Quelltexts, in der Strings und Kommentare ausgeblendet sind, plus Klammerpaare. |
 | `analysis/SymbolExtractor` | Findet Funktionen, Methoden, Klassen, Typen und Top-Level-Konstanten mit Zeilenbereich. |
@@ -32,11 +34,12 @@
 
 ## REST-API
 
-Alle PR-Endpunkte unter `/api/prs/{provider}/{owner}/{repo}/{number}`.
+Alle PR-Endpunkte unter `/api/prs/{provider}/{owner}/{repo}/{number}`; `provider` ist `github` oder `gitlab`, verschachtelte GitLab-Gruppen stehen als `gruppe~untergruppe` in `owner`.
 
 | Methode | Pfad | Zweck |
 |---|---|---|
-| GET | `/api/me` | Angemeldeter GitHub-User, Datenverzeichnis |
+| GET | `/api/me` | Konten pro Provider (User oder Grund, warum keiner), Datenverzeichnis |
+| GET | `/api/resolve?url=…` | PR-/MR-URL von GitHub oder GitLab → `{provider, owner, repo, number}` |
 | GET | `/api/prs?filter=all\|authored\|review-requested` | Offene PRs (mit lokalem Fortschritt, falls vorhanden) |
 | GET | `/api/local` | PRs mit lokalen Daten (offline) |
 | GET | `…/{number}` | **Bundle**: PR-Infos, Dateien, Analyse, Review-Status. Lädt den Snapshot beim ersten Mal von GitHub. |
@@ -45,7 +48,7 @@ Alle PR-Endpunkte unter `/api/prs/{provider}/{owner}/{repo}/{number}`.
 | GET | `…/{number}/state` | Review-Status (`review.json`) |
 | POST | `…/{number}/marks` | Zeilen markieren: `{"lines":[{"path":"a.ts","key":"N12"}],"ok":true,"scope":"group:quick-wins/übersetzungen","by":"agent:claude"}` |
 | GET | `…/{number}/comments` | Kommentare von GitHub (Inline + allgemein) |
-| POST | `…/{number}/comments` | Kommentar sofort veröffentlichen: inline `{path,line,side,body}`, Antwort `{inReplyTo,body}`, allgemein `{body}` |
+| POST | `…/{number}/comments` | Kommentar sofort veröffentlichen: inline `{path,line,side,body}` (+ `oldLine`/`newLine` für Kontextzeilen, von GitLab benötigt), Antwort `{inReplyTo,body}`, allgemein `{body}` |
 
 Fehler kommen als `{"message": "…"}` mit passendem HTTP-Status.
 

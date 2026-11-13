@@ -9,12 +9,12 @@ or text. The app re-reads files on every request, so your edits show up in the U
 AGENTS.md              this file (rewritten on every app start)
 rules.default.json     built-in classification rules (rewritten on start; reference only)
 rules.json             OPTIONAL custom rules; takes precedence; edits trigger re-analysis
-reviews/<provider>/<owner>/<repo>/<number>/
+reviews/<provider>/<owner>/<repo>/<number>/      provider: github | gitlab; nested GitLab groups: group~sub
   snapshot.json        PR metadata + parsed diff (frozen when the PR was first opened)
   sources/<path>       new version of each analysed file
   analysis.json        derived: segments, categories, flows (safe to delete; recomputed)
   review.json          THE ONLY REAL STATE: which changed lines are marked "ok"
-  comments.json        cache of the last GitHub comment fetch
+  comments.json        cache of the last comment fetch (GitHub or GitLab)
 ```
 
 ## Line keys
@@ -52,9 +52,11 @@ only use keys from `lineKeys`, always append a `log` entry with `"by": "agent:<n
 
 ## Other endpoints
 
-* `GET  /api/prs` – open PRs (authored by the user or review requested)
+* `GET  /api/prs` – open PRs/MRs (authored by the user or review requested) of all configured hosts
+* `GET  /api/resolve?url=<PR or MR web URL>` – turns a GitHub/GitLab URL into provider/owner/repo/number
 * `GET  /api/prs/<provider>/<owner>/<repo>/<number>` – bundle (also creates the files above)
 * `POST …/reanalyse` – recompute analysis.json (e.g. after editing rules.json)
-* `GET  …/comments`, `POST …/comments` – GitHub comments; POST publishes IMMEDIATELY on GitHub:
+* `GET  …/comments`, `POST …/comments` – comments; POST publishes IMMEDIATELY on GitHub/GitLab:
   inline `{"path":"src/a.ts","line":12,"side":"RIGHT","body":"…"}`, reply `{"inReplyTo":123,"body":"…"}`,
-  general `{"body":"…"}`. Only comment when the user asked you to.
+  general `{"body":"…"}`. For unchanged context lines also send `oldLine` and `newLine` (GitLab needs both).
+  Only comment when the user asked you to.

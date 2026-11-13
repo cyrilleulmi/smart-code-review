@@ -16,7 +16,7 @@ Alles, was SmartCodeReview lokal weiss, liegt als **lesbare Dateien** in einem V
 ├── rules.default.json        Mitgelieferte Regeln (wird beim Start überschrieben, nur zum Nachschlagen)
 ├── rules.json                OPTIONAL: eigene Regeln; hat Vorrang. Änderungen werden automatisch übernommen.
 └── reviews/
-    └── github/<owner>/<repo>/<number>/
+    └── <github|gitlab>/<owner>/<repo>/<number>/      (GitLab-Gruppen: gruppe~untergruppe)
         ├── snapshot.json     PR-Metadaten + Diff (eingefroren)
         ├── sources/<pfad>    Quelltext der neuen Version (nur analysierte Dateien)
         ├── analysis.json     Segmente, Kategorien, Flüsse (abgeleitet, jederzeit neu berechenbar)

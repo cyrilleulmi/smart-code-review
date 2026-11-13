@@ -41,6 +41,11 @@ public final class SymbolExtractor {
             "^\\s*(?:@\\w+(?:\\([^)]*\\))?\\s+)*(?:export\\s+)?(?:default\\s+)?(?:declare\\s+)?(?:abstract\\s+)?"
                     + "(?:(?:public|private|protected|static|final|sealed|data|open|internal)\\s+)*"
                     + "(class|interface|enum|record)\\s+([A-Za-z_$][\\w$]*)");
+    /** Go: `func Name(`, `func (r *Recv) Name(`, `func Name[T any](`. */
+    private static final Pattern GO_FUNC = Pattern.compile(
+            "^func\\s+(?:\\(\\s*(?:\\w+\\s+)?\\*?\\s*(\\w+)[^)]*\\)\\s*)?([A-Za-z_]\\w*)\\s*(?:\\[[^\\]]*\\])?\\(");
+    /** Go: `type Name struct {` / `type Name interface {`. */
+    private static final Pattern GO_TYPE = Pattern.compile("^type\\s+([A-Za-z_]\\w*)(?:\\[[^\\]]*\\])?\\s+(struct|interface)\\b");
     private static final Pattern TYPE_ALIAS = Pattern.compile(
             "^\\s*(?:export\\s+)?(?:declare\\s+)?type\\s+([A-Za-z_$][\\w$]*)\\b[^=]*=");
     private static final Pattern FUNCTION_DECL = Pattern.compile(
@@ -66,6 +71,9 @@ public final class SymbolExtractor {
     public static List<Symbol> extract(CodeText text, String path) {
         List<Symbol> symbols = new ArrayList<>();
         boolean jsx = path.endsWith(".tsx") || path.endsWith(".jsx");
+        if (path.endsWith(".go")) {
+            return withContainers(withLeadingComments(text, extractGo(text)));
+        }
         List<String> code = text.code;
 
         for (int li = 0; li < code.size(); li++) {
@@ -133,6 +141,35 @@ public final class SymbolExtractor {
         return withContainers(withLeadingComments(text, symbols));
     }
 
+    /** Go has its own simple top-level grammar: funcs (with receiver = container) and struct/interface types. */
+    private static List<Symbol> extractGo(CodeText text) {
+        List<Symbol> symbols = new ArrayList<>();
+        for (int li = 0; li < text.code.size(); li++) {
+            String line = text.code.get(li);
+            Matcher m;
+            if ((m = GO_FUNC.matcher(line)).find()) {
+                int[] afterParams = text.skipParens(li, m.end() - 1);
+                int[] stop = new int[2];
+                if (afterParams != null) {
+                    // return types may contain parens, e.g. `) (string, error) {`: take the first '{' at paren depth 0
+                    text.textUntil(afterParams[0], afterParams[1], "{", 3, stop);
+                    CodeText.BracePair body = stop[0] < 0 ? null : text.firstPairFrom(stop[0], stop[1], 0);
+                    if (body != null) {
+                        symbols.add(new Symbol(m.group(2), m.group(1) != null ? "method" : "function", li + 1,
+                                body.closeLine() + 1, m.group(1)));
+                    }
+                }
+            } else if ((m = GO_TYPE.matcher(line)).find()) {
+                CodeText.BracePair body = text.firstPairFrom(li, m.end(), 2);
+                if (body != null) {
+                    symbols.add(new Symbol(m.group(1), m.group(2).equals("struct") ? "class" : "interface", li + 1,
+                            body.closeLine() + 1, null));
+                }
+            }
+        }
+        return symbols;
+    }
+
     /** Doc comments, line comments and annotations right above a declaration belong to it. */
     private static List<Symbol> withLeadingComments(CodeText text, List<Symbol> symbols) {
         List<Symbol> result = new ArrayList<>(symbols.size());
@@ -186,6 +223,10 @@ public final class SymbolExtractor {
         List<Symbol> classes = symbols.stream().filter(s -> s.kind().equals("class")).toList();
         List<Symbol> result = new ArrayList<>();
         for (Symbol s : symbols) {
+            if (s.container() != null) {
+                result.add(s); // container already known (Go receiver)
+                continue;
+            }
             if (s.kind().equals("method") && symbols.stream().anyMatch(o -> o != s && o.isCallable()
                     && o.startLine() < s.startLine() && o.endLine() >= s.endLine())) {
                 continue;

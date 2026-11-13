@@ -40,7 +40,14 @@ public class ReviewResource {
     @GET
     @Path("/me")
     public Me me() {
-        return new Me(service.provider("github").currentUser(), store.root().toString(), String.join(",", service.providerIds()));
+        return new Me(service.accounts(), store.root().toString());
+    }
+
+    /** Resolves a PR/MR web URL (GitHub or GitLab) to {provider, owner, repo, number}. */
+    @GET
+    @Path("/resolve")
+    public PrRef resolve(@QueryParam("url") String url) {
+        return service.resolve(url == null ? "" : url);
     }
 
     /** filter: all (default) | authored | review-requested */

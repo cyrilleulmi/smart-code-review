@@ -1,18 +1,23 @@
 # SmartCodeReview (PoC)
 
-Code-Reviews nach **Bedeutung statt nach Dateien**. SmartCodeReview holt deine offenen Pull Requests von GitHub, zerlegt jede Änderung in sinnvolle Einheiten (Funktionen, Typen, Hunks) und sortiert sie:
+Code-Reviews nach **Bedeutung statt nach Dateien**. SmartCodeReview holt deine offenen Pull Requests von **GitHub** und Merge Requests von **GitLab** (gitlab.com oder self-managed), zerlegt jede Änderung in sinnvolle Einheiten (Funktionen, Typen, Hunks) und sortiert sie:
 
 1. **Quick wins** – höchstwahrscheinlich irrelevante Änderungen (generierter Code, Übersetzungen, DTOs, Mapper, banale REST-Aufrufe, Imports …) zum schnellen Abhaken. Erkannt per Muster, **ohne KI**.
 2. **Datenflüsse** – geänderte Funktionen, die sich gegenseitig aufrufen, in Aufrufreihenfolge: Diagramm oben, Code darunter, die Aufrufstellen sind mit dem aufgerufenen Code verbunden.
 3. **Einzelne Änderungen**, **Tests**, **Styles & Assets**.
 
-Jede geänderte Zeile kann als **ok** markiert werden, einzeln, als Block, als Gruppe, als Flow oder als ganze Kategorie. Die Markierungen leben **nur lokal** in JSON-Dateien, die auch Agenten lesen und schreiben können. Kommentare gehen **sofort** als Inline-Kommentare an GitHub.
+Jede geänderte Zeile kann als **ok** markiert werden, einzeln, als Block, als Gruppe, als Flow oder als ganze Kategorie. Die Markierungen leben **nur lokal** in JSON-Dateien, die auch Agenten lesen und schreiben können. Kommentare gehen **sofort** als Inline-Kommentare an GitHub bzw. GitLab.
 
 ![Fluss-Ansicht](docs/img/flow.png)
 
 ## Schnellstart (lokal)
 
-Voraussetzungen: JDK 21+ (getestet mit 25), Node 22+ und ein GitHub-Login (`gh auth login`) oder `GITHUB_TOKEN`.
+Voraussetzungen: JDK 21+ (getestet mit 25), Node 22+ und mindestens ein Code-Host:
+
+| Host | Zugang | Ohne Token |
+|---|---|---|
+| GitHub | `GITHUB_TOKEN` / `GH_TOKEN`, sonst `gh auth token` | – |
+| GitLab | `GITLAB_TOKEN` / `GL_TOKEN` (Scope `api`), sonst `glab config get token`; self-managed: `SCR_GITLAB_URL=https://gitlab.example.com` | Öffentliche Merge Requests lassen sich per URL öffnen (nur lesen) |
 
 ```powershell
 # Windows
@@ -26,12 +31,22 @@ Voraussetzungen: JDK 21+ (getestet mit 25), Node 22+ und ein GitHub-Login (`gh a
 
 Das Skript baut beim ersten Mal das Angular-UI und startet dann Quarkus im Dev-Mode. Danach im Browser **http://localhost:8080** öffnen.
 
-Der GitHub-Token wird in dieser Reihenfolge gesucht: `GITHUB_TOKEN`, dann `GH_TOKEN`, dann `gh auth token`.
+Beliebige PRs/MRs (auch fremde, öffentliche) öffnest du, indem du die URL ins Suchfeld der PR-Liste einfügst und Enter drückst.
 
-### Als Native-Binary in Docker
+### Fertiges Image von Docker Hub
 
 ```powershell
-$env:GITHUB_TOKEN = gh auth token
+docker run --rm -p 127.0.0.1:8080:8080 -v ${PWD}/data:/data `
+  -e GITHUB_TOKEN=$(gh auth token) -e GITLAB_TOKEN=glpat-... culmi/smart-code-review:latest
+```
+
+Natives Executable (Mandrel, linux/amd64), Image ca. 120 MB, Start in ca. 50 ms. Alle Tokens sind optional.
+
+### Native-Binary selbst bauen (Docker)
+
+```powershell
+$env:GITHUB_TOKEN = gh auth token      # optional
+$env:GITLAB_TOKEN = "glpat-..."         # optional
 docker compose up --build
 ```
 
@@ -48,11 +63,11 @@ cd frontend && npm start              # UI auf :4200, /api wird an :8080 weiterg
 
 | Was | Wie |
 |---|---|
-| PR öffnen | Tool-Fenster «Pull Requests» (Alt+1), Filter *Alle / Von mir / Review* |
+| PR/MR öffnen | Tool-Fenster «Pull/Merge Requests» (Alt+1), Filter *Alle / Von mir / Review*, oder URL einfügen + Enter |
 | Navigieren | Tool-Fenster «Review» (Alt+2): Tabs *Kategorien / Flows / Dateien* |
 | Zeile ok | Häkchen im Gutter; **Shift-Klick** markiert einen Bereich |
 | Block / Gruppe / Flow ok | Button «Block ok», ✓-Button im Baum (beim Überfahren), «Ganzen Flow als ok markieren» |
-| Kommentar | Sprechblase im Gutter (nur auf Zeilen im Diff), Ctrl+Enter sendet sofort an GitHub |
+| Kommentar | Sprechblase im Gutter (nur auf Zeilen im Diff), Ctrl+Enter sendet sofort an GitHub/GitLab |
 | Aufruf folgen | Blaue Chips `→ ② saveEvent` an der Aufrufstelle, «← aufgerufen von …» im Block-Kopf |
 | Erledigtes ausblenden | Toolbar-Knopf (Pfeile): vollständig markierte Blöcke einklappen |
 
@@ -71,7 +86,7 @@ cd frontend && npm start              # UI auf :4200, /api wird an :8080 weiterg
 ## Projektstruktur
 
 ```
-backend/    Quarkus 3.40 (Java 25): GitHub-Anbindung, Analyse, Datenablage, REST-API, liefert das UI aus
+backend/    Quarkus 3.40 (Java 25): GitHub-/GitLab-Anbindung, Analyse, Datenablage, REST-API, liefert das UI aus
 frontend/   Angular 22 (standalone, signals, zoneless): UI im IntelliJ-«New UI»-Look
 docs/       Konzept, Annahmen, Architektur, Formate
 Dockerfile  Native-Build (Node → Mandrel → ubi9-micro)

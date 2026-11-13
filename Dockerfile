@@ -1,5 +1,6 @@
 # SmartCodeReview as a native executable - no local GraalVM needed.
 #   docker compose up --build        (see docker-compose.yml)
+#   docker build --build-arg VERSION=0.2.0 -t culmi/smart-code-review:0.2.0 .
 # Stage 1 builds the Angular UI, stage 2 compiles the Quarkus backend (with the UI inside) to a
 # native binary using the Mandrel builder image, stage 3 is a minimal runtime image.
 
@@ -18,6 +19,8 @@ WORKDIR /code
 RUN chmod +x mvnw && ./mvnw -B -q -Dnative -DskipTests package
 
 FROM quay.io/quarkus/ubi9-quarkus-micro-image:2.0
+ARG VERSION=dev
+LABEL org.opencontainers.image.title="SmartCodeReview"       org.opencontainers.image.description="Code reviews by meaning instead of by file: quick wins and data flows for GitHub pull requests and GitLab merge requests"       org.opencontainers.image.version="${VERSION}"       org.opencontainers.image.source="https://github.com/cyrilleulmi/smart-code-review"
 WORKDIR /work/
 RUN mkdir -p /data && chown 1001:root /work /data && chmod g+rwX /work /data
 COPY --from=native --chown=1001:root --chmod=0755 /code/target/*-runner /work/application

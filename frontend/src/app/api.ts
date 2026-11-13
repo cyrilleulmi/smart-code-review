@@ -10,10 +10,43 @@ export interface User {
   avatarUrl: string | null;
 }
 
+export interface Account {
+  provider: string;
+  label: string;
+  host: string;
+  user: User | null;
+  error: string | null;
+}
+
 export interface Me {
-  user: User;
+  accounts: Account[];
   dataDir: string;
-  providers: string;
+}
+
+export interface ProviderInfo {
+  label: string;
+  /** "#12" on GitHub, "!12" on GitLab */
+  sigil: string;
+  noun: string;
+}
+
+const PROVIDERS: Record<string, ProviderInfo> = {
+  github: { label: 'GitHub', sigil: '#', noun: 'Pull Request' },
+  gitlab: { label: 'GitLab', sigil: '!', noun: 'Merge Request' },
+};
+
+export function providerInfo(provider: string | null | undefined): ProviderInfo {
+  return PROVIDERS[provider ?? ''] ?? { label: provider ?? '?', sigil: '#', noun: 'Pull Request' };
+}
+
+/** Nested GitLab groups travel as "group~sub" in refs and URLs; show them with slashes. */
+export function ownerLabel(owner: string): string {
+  return owner.replaceAll('~', '/');
+}
+
+/** e.g. "cyrilleulmi/spongecoach#13" or "gitlab-org/cli!4347" */
+export function prLabel(pr: { provider: string; owner: string; repo: string; number: number }): string {
+  return `${ownerLabel(pr.owner)}/${pr.repo}${providerInfo(pr.provider).sigil}${pr.number}`;
 }
 
 export type PrRole = 'authored' | 'review-requested';
@@ -53,6 +86,7 @@ export interface PullRequestInfo {
   additions: number;
   deletions: number;
   changedFiles: number;
+  startSha: string | null;
 }
 
 export interface LineRef {
@@ -191,6 +225,9 @@ export interface NewComment {
   side?: 'LEFT' | 'RIGHT' | null;
   body: string;
   inReplyTo?: number | null;
+  /** both set for context lines (GitLab needs both to anchor a comment) */
+  oldLine?: number | null;
+  newLine?: number | null;
 }
 
 export interface LineMark {
@@ -215,6 +252,10 @@ export class Api {
 
   prs(): Observable<PullRequestSummary[]> {
     return this.http.get<PullRequestSummary[]>('/api/prs');
+  }
+
+  resolve(url: string): Observable<PrKey> {
+    return this.http.get<PrKey>('/api/resolve', { params: { url } });
   }
 
   bundle(pr: PrKey): Observable<ReviewBundle> {

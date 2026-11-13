@@ -59,7 +59,7 @@ public final class Analyzer {
     private static final Pattern DEEP_LAYER = Pattern.compile("(?i)(repository|repo|dao|store|db|database|client|gateway|adapter|lib/|utils?/|helpers?/)");
 
     /** Bump when the analysis logic changes, so stored analyses are recomputed. */
-    public static final int VERSION = 5;
+    public static final int VERSION = 7;
 
     private final Rules rules;
 
@@ -269,11 +269,13 @@ public final class Analyzer {
                 continue;
             }
             int j = i;
+            boolean goBlock = code.get(i).strip().endsWith("("); // Go: import ( ... )
             while (j < code.size()) {
                 lines.add(j);
                 sb.append(raw.get(j)).append('\n');
                 String c = code.get(j);
-                if (c.contains(";") || c.contains(" from ") || (j == i && !c.contains("{")) || c.strip().startsWith("}")) {
+                if (goBlock ? j > i && c.strip().startsWith(")")
+                        : c.contains(";") || c.contains(" from ") || (j == i && !c.contains("{")) || c.strip().startsWith("}")) {
                     break;
                 }
                 j++;
@@ -383,6 +385,13 @@ public final class Analyzer {
         }
         if (Pattern.compile("[/'\"]" + Pattern.quote(stem) + "['\"./]").matcher(imports).find()) {
             return true;
+        }
+        // Go imports packages (directories), not files
+        if ("go".equals(callee.file.language()) && path.contains("/")) {
+            String dir = path.substring(0, path.lastIndexOf('/'));
+            if (imports.contains("/" + dir.substring(dir.lastIndexOf('/') + 1) + "\"")) {
+                return true;
+            }
         }
         Set<String> names = new HashSet<>();
         names.add(callee.symbol.name());

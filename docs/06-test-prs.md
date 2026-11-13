@@ -32,6 +32,17 @@ Für den PoC wurden in drei eigenen Repos **Draft-PRs** erstellt. Alle tragen **
 
 **stv-bero-website#1:** Snapshot rund 15 s (194 Quelltexte), Analyse rund 5 s, 58 Flüsse. Einzelne Flüsse sind bei so einem «ganze neue Website»-PR noch gross (bis 78 Schritte), siehe Annahme B4.
 
+## GitLab
+
+Für GitLab gibt es (noch) kein eigenes Konto mit Test-MRs. Getestet wurde **ohne Token** gegen öffentliche Merge Requests auf gitlab.com:
+
+| MR | Ergebnis |
+|---|---|
+| [gitlab-org/gitlab-vscode-extension!3511](https://gitlab.com/gitlab-org/gitlab-vscode-extension/-/merge_requests/3511) | TypeScript, 20 Dateien: Quick wins (Typen, Imports), 7 Flüsse, z. B. `parseHunk → lines → allLinesForNewSide → …`, Tests separat |
+| [gitlab-org/cli!4347](https://gitlab.com/gitlab-org/cli/-/merge_requests/4347) | Go, 5 Dateien: ein Fluss über zwei Pakete (`options.run`/`runCreateProject` → `config.LocalConfigDir` → `revParseDir`), `_test.go` als Tests |
+
+Nicht getestet (braucht Token): MR-Liste, Kommentieren. Mit Token: `GITLAB_TOKEN` setzen, Tool neu starten.
+
 ## Aufräumen
 
 ```bash
