@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, input, ou
 import { Comment, DisplayLine, LineMark, Segment } from './api';
 import { highlightLines } from './highlight';
 import { Icon, SymbolBadge } from './icon';
+import { areaColor, areaLabel, areaOfSegment, langColor, langLabel } from './look';
 import { ReviewStore } from './review.store';
 
 interface Thread {
@@ -21,7 +22,9 @@ interface Thread {
   styleUrl: './code-block.scss',
   host: {
     '[class.done]': 'allOk()',
+    '[class.fe]': 'area() === "frontend"',
     '[attr.data-segment]': 'segment().id',
+    '[style.--area]': 'areaColor(area())',
   },
 })
 export class CodeBlock {
@@ -35,6 +38,10 @@ export class CodeBlock {
   /** Text like "aufgerufen von ① update · Zeile 76". */
   readonly calledBy = input<string | null>(null);
   readonly stepOf = input<Record<string, number>>({});
+  /** Colours of the connections in a flow: "from>to" -> CSS colour (call chips and "aufgerufen von"). */
+  readonly edgeColors = input<Record<string, string>>({});
+  /** Colour of the connection from the caller (flow view). */
+  readonly calledByColor = input<string | null>(null);
   readonly refClick = output<string>();
   readonly calledByClick = output<void>();
 
@@ -47,6 +54,16 @@ export class CodeBlock {
   private lastClicked: number | null = null;
 
   protected readonly html = computed(() => highlightLines(this.segment().lines, this.segment().language));
+
+  protected readonly areaColor = areaColor;
+  /** Layer of the block: frontend, api, domain, ... (null when unknown) */
+  protected readonly area = computed(() => areaOfSegment(this.segment(), this.store.areaBySegment()));
+  protected readonly areaText = computed(() => areaLabel(this.area()));
+  protected readonly lang = computed(() => ({ label: langLabel(this.segment().language), color: langColor(this.segment().language) }));
+
+  protected refColor(segmentId: string): string | null {
+    return this.edgeColors()[this.segment().id + '>' + segmentId] ?? null;
+  }
 
   protected readonly fileName = computed(() => {
     const p = this.segment().path;
@@ -124,10 +141,6 @@ export class CodeBlock {
       return null;
     }
     return this.store.okCount(this.segment().path, line.key);
-  }
-
-  protected layerLabel(layer: string): string {
-    return ({ domain: 'Domäne', usecase: 'Use Case', application: 'Application', adapter: 'Adapter' } as Record<string, string>)[layer] ?? layer;
   }
 
   protected goPlace(id: string, event: Event): void {

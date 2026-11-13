@@ -4,6 +4,12 @@
   @if (step(); as n) {
     <span class="step-no">{{ n }}</span>
   }
+  @if (areaText()) {
+    <span class="area-tag" [style.--t]="areaColor(area())" title="Schicht">{{ areaText() }}</span>
+  }
+  @if (lang().label) {
+    <span class="lang-tag" [style.--t]="lang().color">{{ lang().label }}</span>
+  }
   @if (seg.symbol) {
     <app-symbol-badge [kind]="seg.symbolKind" />
     <span class="symbol">{{ seg.symbol }}</span>
@@ -12,12 +18,9 @@
   @if (seg.startLine) {
     <span class="lines">:{{ seg.startLine }}</span>
   }
-  @if (seg.layer) {
-    <span class="chip layer" title="Schicht (Ports &amp; Adapters)">{{ layerLabel(seg.layer) }}</span>
-  }
   <span class="chip" [class]="'chip cat-' + seg.category" [title]="seg.reason">{{ seg.category === 'logic' ? 'Logik' : seg.category === 'tests' ? (seg.symbolKind === 'test' ? 'Testfall' : 'Test') : seg.group }}</span>
   @if (calledBy(); as by) {
-    <button class="called-by" type="button" (click)="$event.stopPropagation(); calledByClick.emit()">
+    <button class="called-by" type="button" [style.--c]="calledByColor()" (click)="$event.stopPropagation(); calledByClick.emit()">
       <app-icon name="arrowLeft" [size]="12" /> {{ by }}
     </button>
   }
@@ -95,7 +98,7 @@
           <span class="g-sign">{{ line.type === 'add' ? '+' : line.type === 'del' ? '−' : '' }}</span>
           <span class="src"><code [innerHTML]="html()[i]"></code>
             @for (ref of line.refs ?? []; track ref.segmentId) {
-              <button type="button" class="ref" (click)="refClick.emit(ref.segmentId)" [title]="'Springe zu ' + ref.symbol">
+              <button type="button" class="ref" [style.--c]="refColor(ref.segmentId)" (click)="refClick.emit(ref.segmentId)" [title]="'Springe zu ' + ref.symbol">
                 <app-icon name="arrowRight" [size]="11" />
                 @if (stepOf()[ref.segmentId]; as n) {
                   <b>{{ n }}</b>

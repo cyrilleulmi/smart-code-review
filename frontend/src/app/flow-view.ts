@@ -13,6 +13,7 @@ import {
 import { Flow, FlowStep, Segment } from './api';
 import { CodeBlock } from './code-block';
 import { Icon, SymbolBadge } from './icon';
+import { EDGE_COLORS, areaColor, areaLabel, areaOfSegment, edgeColor, edgeColorIndex } from './look';
 import { ReviewStore } from './review.store';
 
 interface Node {
@@ -30,13 +31,17 @@ interface Connector {
   d: string;
   from: string;
   to: string;
+  /** colour index 1..8 of the connection */
+  c: number;
+  http: boolean;
 }
 
 const NODE_W = 236;
 const NODE_H = 46;
 const COL_GAP = 56;
 const ROW_GAP = 12;
-const INDENT = 28;
+/** Indentation of the code blocks per call level (the cards scroll horizontally when it gets deep). */
+const INDENT = 56;
 
 /**
  * A data flow: a call-tree diagram on top, below the code of each step in call order. Call sites inside
@@ -57,6 +62,16 @@ export class FlowView {
   private readonly cards = viewChild.required<ElementRef<HTMLElement>>('cards');
   protected readonly connectors = signal<Connector[]>([]);
   protected readonly railHeight = signal(0);
+  protected readonly railWidth = signal(0);
+  protected readonly markers = Array.from({ length: EDGE_COLORS }, (_, i) => i + 1);
+  protected readonly areaColor = areaColor;
+
+  /** Every connection of the flow keeps one colour: "from>to" -> CSS colour. */
+  protected readonly edgeColors = computed(() => {
+    const map: Record<string, string> = {};
+    this.flow().edges.forEach((e, i) => (map[e.from + '>' + e.to] = edgeColor(i)));
+    return map;
+  });
   protected readonly hovered = signal<string | null>(null);
   protected readonly indent = INDENT;
 
@@ -113,8 +128,9 @@ export class FlowView {
     const nodes = this.nodes();
     const byId = new Map(nodes.map((n) => [n.step.segmentId, n]));
     const edges = this.flow().edges
-      .filter((e) => byId.has(e.from) && byId.has(e.to))
-      .map((e) => {
+      .map((e, i) => ({ e, c: edgeColorIndex(i) }))
+      .filter(({ e }) => byId.has(e.from) && byId.has(e.to))
+      .map(({ e, c }) => {
         const a = byId.get(e.from)!;
         const b = byId.get(e.to)!;
         const x1 = a.x + NODE_W;
@@ -126,7 +142,7 @@ export class FlowView {
           ? `M ${x1} ${y1} C ${x1 + 40} ${y1}, ${x1 + 40} ${y2}, ${b.x + NODE_W} ${y2}`
           : `M ${x1} ${y1} C ${x1 + COL_GAP / 2} ${y1}, ${x2 - COL_GAP / 2} ${y2}, ${x2 - 4} ${y2}`;
         const http = e.kind === 'http';
-        return { d, from: e.from, to: e.to, back, http, via: e.via, lx: (x1 + x2) / 2, ly: (y1 + y2) / 2 - 4 };
+        return { d, from: e.from, to: e.to, back, http, via: e.via, c, lx: (x1 + x2) / 2, ly: (y1 + y2) / 2 - 4 };
       });
     const width = Math.max(...nodes.map((n) => n.x + NODE_W), 0) + 48;
     const height = Math.max(...nodes.map((n) => n.y + NODE_H), 0) + 4;
@@ -255,6 +271,20 @@ export class FlowView {
     return name.substring(name.lastIndexOf('.') + 1);
   }
 
+  /** Layer of a step (frontend, api, domain, ...) for the coloured stripe and tag. */
+  protected areaOf(seg: Segment): string | null {
+    return areaOfSegment(seg, this.store.areaBySegment());
+  }
+
+  protected areaText(seg: Segment): string {
+    return areaLabel(this.areaOf(seg));
+  }
+
+  protected calledByColor(node: Node): string | null {
+    const parent = node.step.parentSegmentId;
+    return parent ? this.edgeColors()[parent + '>' + node.step.segmentId] ?? null : null;
+  }
+
   protected nodeHint(seg: Segment): string {
     const sym = seg.symbol ?? '';
     const container = sym.includes('.') ? sym.substring(0, sym.lastIndexOf('.')) + ' · ' : '';
@@ -324,7 +354,8 @@ export class FlowView {
     const top = host.getBoundingClientRect().top;
     const result: Connector[] = [];
     const lanes = new Map<string, number>();
-    for (const edge of this.flow().edges) {
+    const scroll = host.scrollLeft;
+    for (const [i, edge] of this.flow().edges.entries()) {
       const fromEl = host.querySelector<HTMLElement>(`app-code-block[data-segment="${edge.from}"]`);
       const toEl = host.querySelector<HTMLElement>(`app-code-block[data-segment="${edge.to}"]`);
       if (!fromEl || !toEl) {
@@ -333,19 +364,20 @@ export class FlowView {
       const lineEl = edge.line != null ? fromEl.querySelector<HTMLElement>(`.row[data-new="${edge.line}"]`) : null;
       const fromRect = (lineEl ?? fromEl.querySelector<HTMLElement>('.head') ?? fromEl).getBoundingClientRect();
       const toHead = (toEl.querySelector<HTMLElement>('.head') ?? toEl).getBoundingClientRect();
-      const fromX = fromEl.getBoundingClientRect().left - host.getBoundingClientRect().left;
-      const toX = toEl.getBoundingClientRect().left - host.getBoundingClientRect().left;
+      const fromX = fromEl.getBoundingClientRect().left - host.getBoundingClientRect().left + scroll;
+      const toX = toEl.getBoundingClientRect().left - host.getBoundingClientRect().left + scroll;
       const y1 = fromRect.top - top + fromRect.height / 2;
       const y2 = toHead.top - top + toHead.height / 2;
       const lane = lanes.get(edge.from) ?? lanes.size;
       lanes.set(edge.from, lane);
-      const x = 6 + (lane % 4) * 5;
+      const x = 6 + (lane % 6) * 4;
       const r = 6;
       const dir = y2 > y1 ? 1 : -1;
       const d = `M ${fromX} ${y1} H ${x + r} Q ${x} ${y1}, ${x} ${y1 + r * dir} V ${y2 - r * dir} Q ${x} ${y2}, ${x + r} ${y2} H ${toX - 2}`;
-      result.push({ d, from: edge.from, to: edge.to });
+      result.push({ d, from: edge.from, to: edge.to, c: edgeColorIndex(i), http: edge.kind === 'http' });
     }
     this.railHeight.set(host.scrollHeight);
+    this.railWidth.set(host.scrollWidth);
     this.connectors.set(result);
   }
 }

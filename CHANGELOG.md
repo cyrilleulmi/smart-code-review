@@ -13,6 +13,7 @@ Docker-Images: `culmi/smart-code-review:<version>` und `:latest` (= letztes Rele
 - **Flows über REST:** HTTP-Aufrufe im Frontend (`http.put('/api/players/${id}')`, `fetch`, axios) werden mit Backend-Endpunkten verbunden (JAX-RS, Spring, Next.js-Route-Handler, Express, Go). Ein Flow läuft so von der Komponente über den API-Client ins Backend.
 - **Komponentendiagramm** auf der Übersicht: alle geänderten Komponenten in Spalten nach Schicht, Aufrufe und REST-Aufrufe dazwischen, Fokus-Knopf pro Komponente.
 - **Fokus im Flow-Diagramm:** Der Knopf im Knoten zeigt nur noch diesen Knoten und alles, was davon abhängt – im Diagramm und im Code.
+- **Deutlichere Gestaltung:** Jede Verbindung in einem Flow hat ihre eigene Farbe (Diagramm, Verbindungslinie, Aufruf-Chip, «aufgerufen von»); REST-Verbindungen gestrichelt. Jeder Block und jeder Knoten zeigt seine Schicht (Frontend, API, Use Case, Application, Domäne, Daten, Test) als farbigen Streifen und Badge sowie die Sprache (TS, Java, Go, …); Frontend-Code ist zusätzlich leicht getönt. Verschachtelte Aufrufe sind stärker eingerückt, tiefe Flows scrollen seitlich. Im Komponentendiagramm haben Spalten, Knoten und Verbindungen die Farbe ihrer Schicht.
 
 ### Geändert
 - `analysis.json`: neue Felder `architecture`, `components`, `componentEdges`, `segments[].layer`, `segments[].frontend`, `flows[].edges[].kind`. Bestehende Analysen werden neu berechnet; neue Datei `structure.json` pro PR (Ordner des Repos).

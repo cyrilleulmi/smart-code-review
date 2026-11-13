@@ -13,7 +13,8 @@ design decisions are in `docs/` (German).
   and `backend/src/main/resources/data-dir/AGENTS.md`); extend, don't rename.
 - **Native-friendly backend:** records with `@RegisterForReflection`, Jackson trees for external JSON, new classpath
   resources must be added to `quarkus.native.resources.includes`.
-- **UI look:** IntelliJ New UI dark; use the CSS variables in `frontend/src/styles.scss`, no new colours.
+- **UI look:** IntelliJ New UI dark. Colours only as tokens in `frontend/src/styles.scss` (incl. the palettes `--edge-n` for
+  connections, `--area-*` for layers, `--lang-*` for languages; helpers in `frontend/src/app/look.ts`), never inline hex values.
 - **Provider-neutral:** only `github/` and `gitlab/` know their host; everything else talks to `ReviewProvider`.
   GitLab merge requests are "pull requests" internally; nested groups are encoded as `group~sub` in `PrRef.owner`.
 

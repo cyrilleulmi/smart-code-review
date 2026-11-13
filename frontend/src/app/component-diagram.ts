@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component as NgComponent, computed, inject, signal } from '@angular/core';
 import { Component } from './api';
 import { Icon } from './icon';
+import { areaColor } from './look';
 import { ReviewStore } from './review.store';
 
 interface Box {
@@ -59,7 +60,7 @@ const HEAD = 28;
       <div class="scroll">
         <div class="canvas" [style.width.px]="size().w" [style.height.px]="size().h">
           @for (col of columns(); track col.id) {
-            <div class="col-head" [style.left.px]="col.x" [style.width.px]="w">{{ col.label }}</div>
+            <div class="col-head" [style.left.px]="col.x" [style.width.px]="w" [style.--area]="areaColor(col.id)">{{ col.label }}</div>
           }
           <svg [attr.width]="size().w" [attr.height]="size().h" class="edges">
             <defs>
@@ -68,7 +69,7 @@ const HEAD = 28;
               </marker>
             </defs>
             @for (l of lines(); track l.key) {
-              <path [attr.d]="l.d" class="edge" [class.http]="l.http" [class.hot]="hovered() === l.from || hovered() === l.to"
+              <path [attr.d]="l.d" class="edge" [class.http]="l.http" [class.hot]="hovered() === l.from || hovered() === l.to" [style.stroke]="l.color"
                     [class.dim]="!!hovered() && hovered() !== l.from && hovered() !== l.to" [style.stroke-width]="l.width" marker-end="url(#cd-arrow)">
                 <title>{{ l.title }}</title>
               </path>
@@ -77,6 +78,7 @@ const HEAD = 28;
           @for (b of boxes(); track b.c.id) {
             @let p = progress(b.c);
             <div class="node" role="button" tabindex="0" [style.left.px]="b.x" [style.top.px]="b.y" [style.width.px]="w" [style.height.px]="h"
+                 [style.--area]="areaColor(b.c.area)"
                  [class.done]="p.total > 0 && p.ok === p.total" [class.root]="focus() === b.c.id" [class.dim]="!!hovered() && !related(b.c.id)"
                  [title]="b.c.paths.join('\\n')" (mouseenter)="hovered.set(b.c.id)" (mouseleave)="hovered.set(null)"
                  (click)="open(b)" (keydown.enter)="open(b)">
@@ -108,19 +110,20 @@ const HEAD = 28;
     .focus-info b { color: var(--fg); }
     .legend { display: inline-flex; align-items: center; gap: 6px; color: var(--fg-dim); font-size: 11px; margin-left: 6px; }
     .legend i { display: inline-block; width: 18px; border-top: 2px solid #6f737a; }
-    .legend i.l-http { border-top: 2px dashed #c793e0; }
+    .legend i.l-http { border-top: 2px dashed #6f737a; }
     .empty { color: var(--fg-muted); padding: 12px; margin: 0; }
     .scroll { overflow: auto; max-height: 560px; }
     .canvas { position: relative; margin: 10px 14px 14px; }
-    .col-head { position: absolute; top: 0; height: 20px; color: var(--fg-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; text-align: center; border-bottom: 1px solid var(--border); }
+    .col-head { position: absolute; top: 0; height: 20px; color: var(--area); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; text-align: center; border-bottom: 2px solid color-mix(in srgb, var(--area) 50%, transparent); }
     .edges { position: absolute; inset: 0; overflow: visible; color: #6f737a; }
     .edge { fill: none; stroke: #5b6170; stroke-width: 1.5; transition: stroke 0.15s, opacity 0.15s; }
-    .edge.http { stroke: #c793e0; stroke-dasharray: 5 3; }
-    .edge.hot { stroke: var(--accent); }
-    .edge.http.hot { stroke: #e0b3f5; }
+    .edge { opacity: 0.75; }
+    .edge.http { stroke-dasharray: 5 3; }
+    .edge.hot { opacity: 1; stroke-width: 2.6; }
     .edge.dim { opacity: 0.25; }
-    .node { position: absolute; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 10px; box-sizing: border-box; background: var(--bg-editor);
-      border: 1px solid #43454a; border-radius: 8px; cursor: pointer; transition: border-color 0.15s, opacity 0.15s; }
+    .node { position: absolute; display: flex; align-items: center; gap: 6px; padding: 0 6px 0 10px; box-sizing: border-box;
+      background: color-mix(in srgb, var(--area) 7%, var(--bg-editor));
+      border: 1px solid #43454a; border-left: 4px solid var(--area); border-radius: 8px; cursor: pointer; transition: border-color 0.15s, opacity 0.15s; }
     .node:hover { border-color: var(--accent); }
     .node.done { border-color: var(--ok-border); background: var(--ok-head); }
     .node.root { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(53, 116, 240, 0.3); }
@@ -139,6 +142,7 @@ export class ComponentDiagram {
   protected readonly store = inject(ReviewStore);
   protected readonly w = W;
   protected readonly h = H;
+  protected readonly areaColor = areaColor;
   protected readonly showTests = signal(false);
   protected readonly hideIsolated = signal(false);
   protected readonly focus = signal<string | null>(null);
@@ -228,7 +232,8 @@ export class ComponentDiagram {
         }
         const width = 1.3 + Math.min(2.5, Math.log2(e.calls));
         const title = `${a.c.name} → ${b.c.name}: ${e.calls} ${e.calls === 1 ? 'Aufruf' : 'Aufrufe'}${e.http ? ' (über REST/HTTP)' : ''}`;
-        return { key: e.from + '>' + e.to, d, http: e.http, from: e.from, to: e.to, width, title };
+        // a connection takes the colour of the calling layer: frontend -> backend reads cyan, backend calls orange/...
+        return { key: e.from + '>' + e.to, d, http: e.http, from: e.from, to: e.to, width, title, color: areaColor(a.c.area) };
       });
   });
 

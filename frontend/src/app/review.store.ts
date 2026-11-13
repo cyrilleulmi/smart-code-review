@@ -140,6 +140,15 @@ export class ReviewStore {
     return map;
   });
 
+  /** Layer column of each segment (from the components): frontend, api, domain, ... */
+  readonly areaBySegment = computed(() => {
+    const map = new Map<string, string>();
+    for (const c of this.bundle()?.analysis.components ?? []) {
+      c.segmentIds.forEach((id) => map.set(id, c.area));
+    }
+    return map;
+  });
+
   /** Test infos by test segment id. */
   readonly tests = computed(() => {
     const map = new Map<string, TestInfo>();

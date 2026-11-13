@@ -37,7 +37,73 @@
   --file-added: #73bd79;
   --file-modified: #6ca0f0;
 
+  /* connections: each call in a flow gets one of these (diagram, rail, call chip) */
+  --edge-1: #5b9cf5;
+  --edge-2: #e8a54b;
+  --edge-3: #5cc489;
+  --edge-4: #dd7fcb;
+  --edge-5: #48c3d6;
+  --edge-6: #e8735f;
+  --edge-7: #a99bf2;
+  --edge-8: #cdc45a;
+
+  /* layers (areas): frontend vs. backend layers, in blocks, flow nodes and the component diagram */
+  --area-frontend: #3fbbe0;
+  --area-api: #ef8f52;
+  --area-usecase: #b48cf2;
+  --area-application: #6f9ff5;
+  --area-logic: #9aa4b8;
+  --area-data: #d8ae4f;
+  --area-domain: #5fc47c;
+  --area-test: #da86b9;
+
+  /* languages */
+  --lang-ts: #4a8fe0;
+  --lang-js: #e8d44d;
+  --lang-java: #f0883e;
+  --lang-kotlin: #a97bff;
+  --lang-go: #3fc5e8;
+  --lang-csharp: #9b6fd6;
+  --lang-html: #e8663f;
+  --lang-css: #6a8cf0;
+  --lang-sql: #c8a44e;
+  --lang-python: #e8c84a;
+
   color-scheme: dark;
+}
+
+/* small coloured tags: layer ("Frontend", "Domäne") and language ("TS", "Java"); colour via --t */
+.area-tag,
+.lang-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  height: 17px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font: 600 10.5px/1 var(--font-ui);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.area-tag {
+  color: var(--t);
+  background: color-mix(in srgb, var(--t) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--t) 45%, transparent);
+}
+
+.lang-tag {
+  color: var(--fg-muted);
+  border: 1px solid var(--border-strong);
+
+  &::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: var(--t);
+  }
 }
 
 * {

@@ -122,18 +122,26 @@
   }
 }
 
+/* nested calls are indented strongly; deep flows scroll sideways instead of squeezing the code */
 .cards {
   position: relative;
   display: flex;
   flex-direction: column;
   gap: 14px;
   padding-bottom: 40px;
+  overflow-x: auto;
+
+  > app-code-block,
+  > .hidden-step {
+    flex: none;
+    min-width: 760px;
+  }
 }
 
 .rails {
   position: absolute;
   inset: 0 auto auto 0;
-  width: 100%;
+  min-width: 100%;
   pointer-events: none;
   overflow: visible;
   z-index: 1;
@@ -141,13 +149,17 @@
 
 .rail {
   fill: none;
-  stroke: rgba(84, 138, 247, 0.45);
-  stroke-width: 1.5;
-  transition: stroke 0.15s;
+  stroke-width: 1.6;
+  opacity: 0.7;
+  transition: opacity 0.15s, stroke-width 0.15s;
+
+  &.http {
+    stroke-dasharray: 5 3;
+  }
 
   &.hot {
-    stroke: var(--accent-fg);
-    stroke-width: 2;
+    opacity: 1;
+    stroke-width: 2.6;
   }
 }
 
@@ -272,4 +284,23 @@
   b {
     color: var(--fg);
   }
+}
+
+/* layer of a step: coloured stripe and tag (frontend vs. backend layers) */
+.node {
+  border-left: 4px solid var(--area, #43454a);
+
+  .file .area {
+    color: var(--area);
+    font-weight: 600;
+    margin-right: 3px;
+  }
+}
+
+.edge.dim {
+  opacity: 0.25;
+}
+
+.edge.hot {
+  stroke-width: 2.6;
 }

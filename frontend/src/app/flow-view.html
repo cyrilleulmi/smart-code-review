@@ -49,12 +49,18 @@
       <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
         <path d="M0 0 L8 4 L0 8 z" fill="currentColor" />
       </marker>
+      @for (m of markers; track m) {
+        <marker [attr.id]="'arrow-' + m" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L8 4 L0 8 z" [style.fill]="'var(--edge-' + m + ')'" />
+        </marker>
+      }
     </defs>
     @for (e of d.edges; track $index) {
       <path [attr.d]="e.d" class="edge" [class.hot]="hovered() === e.from || hovered() === e.to" [class.back]="e.back" [class.http]="e.http"
-            marker-end="url(#arrow)"><title>{{ e.http ? 'HTTP ' + e.via : e.via }}</title></path>
+            [class.dim]="!!hovered() && hovered() !== e.from && hovered() !== e.to"
+            [style.stroke]="'var(--edge-' + e.c + ')'" [attr.marker-end]="'url(#arrow-' + e.c + ')'"><title>{{ e.http ? 'HTTP ' + e.via : e.via }}</title></path>
       @if (e.http) {
-        <text class="http-label" [attr.x]="e.lx" [attr.y]="e.ly" text-anchor="middle">HTTP</text>
+        <text class="http-label" [attr.x]="e.lx" [attr.y]="e.ly" text-anchor="middle" [style.fill]="'var(--edge-' + e.c + ')'">HTTP</text>
       }
     }
   </svg>
@@ -64,12 +70,17 @@
             [style.left.px]="n.x" [style.top.px]="n.y" [style.width.px]="d.nodeW" [style.height.px]="d.nodeH"
             [class.done]="p.total > 0 && p.ok === p.total" [class.quick]="n.segment.category === 'quick-wins'"
             [class.off]="!visible().has(n.step.segmentId)" [class.current]="stepIndex() === i" [class.root]="focusRoot() === n.step.segmentId"
+            [style.--area]="areaColor(areaOf(n.segment))"
             (mouseenter)="hovered.set(n.step.segmentId)" (mouseleave)="hovered.set(null)"
             (click)="scrollTo(n.step.segmentId)" (keydown.enter)="scrollTo(n.step.segmentId)">
       <span class="no">{{ n.no }}</span>
       <span class="txt">
         <span class="name"><app-symbol-badge [kind]="n.segment.symbolKind" /> {{ nodeName(n.segment) }}</span>
-        <span class="file">{{ nodeHint(n.segment) }}</span>
+        <span class="file">
+          @if (areaText(n.segment); as a) {
+            <b class="area">{{ a }}</b>
+          }
+          {{ nodeHint(n.segment) }}</span>
       </span>
       @if (p.total > 0 && p.ok === p.total) {
         <app-icon name="check" [size]="14" class="ok" />
@@ -90,9 +101,10 @@
 </div>
 
 <div class="cards" #cards>
-  <svg class="rails" [attr.height]="railHeight()" aria-hidden="true">
+  <svg class="rails" [attr.height]="railHeight()" [attr.width]="railWidth()" aria-hidden="true">
     @for (c of connectors(); track $index) {
-      <path [attr.d]="c.d" class="rail" [class.hot]="hovered() === c.from || hovered() === c.to" />
+      <path [attr.d]="c.d" class="rail" [class.hot]="hovered() === c.from || hovered() === c.to" [class.http]="c.http"
+            [style.stroke]="'var(--edge-' + c.c + ')'" />
     }
   </svg>
   @for (n of nodes(); track n.step.segmentId; let i = $index) {
@@ -103,6 +115,8 @@
         [step]="n.no"
         [stepOf]="stepOf()"
         [calledBy]="calledBy(n)"
+        [edgeColors]="edgeColors()"
+        [calledByColor]="calledByColor(n)"
         [style.margin-left.px]="32 + n.depth * indent"
         (mouseenter)="hovered.set(n.step.segmentId)"
         (mouseleave)="hovered.set(null)"
