@@ -226,7 +226,8 @@ public final class Model {
     public record Account(String provider, String label, String host, User user, String error) {
     }
 
+    /** version: the running SmartCodeReview release (from pom.xml), e.g. "0.3.0". */
     @RegisterForReflection
-    public record Me(List<Account> accounts, String dataDir) {
+    public record Me(List<Account> accounts, String dataDir, String version) {
     }
 }

@@ -21,6 +21,8 @@ export interface Account {
 export interface Me {
   accounts: Account[];
   dataDir: string;
+  /** running release, e.g. "0.3.0" */
+  version: string;
 }
 
 export interface ProviderInfo {

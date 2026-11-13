@@ -18,6 +18,7 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.Response;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import org.jboss.resteasy.reactive.server.ServerExceptionMapper;
 
 import java.util.List;
@@ -31,6 +32,9 @@ import java.util.Map;
 @Path("/api")
 public class ReviewResource {
 
+    @ConfigProperty(name = "quarkus.application.version")
+    String version;
+
     @Inject
     ReviewService service;
 
@@ -40,7 +44,7 @@ public class ReviewResource {
     @GET
     @Path("/me")
     public Me me() {
-        return new Me(service.accounts(), store.root().toString());
+        return new Me(service.accounts(), store.root().toString(), version);
     }
 
     /** Resolves a PR/MR web URL (GitHub or GitLab) to {provider, owner, repo, number}. */

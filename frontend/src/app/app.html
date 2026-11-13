@@ -126,6 +126,9 @@
     <span>{{ store.me()?.dataDir ?? '' }}</span>
     <span class="spacer"></span>
   }
+  @if (store.me()?.version; as v) {
+    <span title="SmartCodeReview-Version">v{{ v }}</span>
+  }
   @for (a of store.me()?.accounts ?? []; track a.provider) {
     <span [class.offline]="!a.user" [title]="a.error ?? a.host"><app-icon [name]="a.provider" [size]="12" /> {{ a.user?.login ?? 'kein Token' }}</span>
   }

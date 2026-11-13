@@ -24,4 +24,7 @@ cd frontend && npm run build          # writes into backend/src/main/resources/M
 cd backend && ./mvnw quarkus:dev      # http://localhost:8080
 cd backend && ./mvnw test             # unit tests (parser, symbols, analysis)
 docker compose up --build             # native image (culmi/smart-code-review)
+./release.sh X.Y.Z                    # release: version, image, tag, push (Git Bash; see docs/08-versionierung.md)
 ```
+
+Add user-visible changes to `CHANGELOG.md` under `## [Unreleased]` (German, like the docs).

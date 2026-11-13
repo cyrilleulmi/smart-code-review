@@ -87,6 +87,8 @@ cd frontend && npm start              # UI auf :4200, /api wird an :8080 weiterg
 | [docs/05-analyse.md](docs/05-analyse.md) | Wie Quick wins und Datenflüsse ohne KI erkannt werden; `rules.json` |
 | [docs/06-test-prs.md](docs/06-test-prs.md) | Die Test-PRs in den anderen Repos und was dabei herauskommen sollte |
 | [docs/07-roadmap.md](docs/07-roadmap.md) | Nächste Schritte |
+| [docs/08-versionierung.md](docs/08-versionierung.md) | Versionsschema, Release mit `./release.sh X.Y.Z`, Docker-Tags |
+| [CHANGELOG.md](CHANGELOG.md) | Änderungen pro Version |
 
 ## Projektstruktur
 

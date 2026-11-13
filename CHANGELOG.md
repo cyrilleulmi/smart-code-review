@@ -1,0 +1,41 @@
+# Changelog
+
+Alle nennenswerten Änderungen an SmartCodeReview. Die Versionen folgen [Semantic Versioning](https://semver.org/lang/de/); wie das hier ausgelegt wird und wie man ein Release macht, steht in [docs/08-versionierung.md](docs/08-versionierung.md).
+
+Docker-Images: `culmi/smart-code-review:<version>` und `:latest` (= letztes Release).
+
+## [Unreleased]
+
+## [0.3.0] – 2026-11-13
+
+### Neu
+- **Tests ↔ Code:** Testdateien werden in Testfälle zerlegt (`describe`/`it`/`test`, JUnit `@Test`, Go `TestXxx`). Jeder geänderte Testfall zeigt die getesteten Komponenten und die abgedeckten Codestellen (direkt oder indirekt über andere geänderte Funktionen), statisch ermittelt. Neue Testübersicht in der Kategorie *Tests*, im Code «Getestet von …» / «Testet …».
+- **Mehrere Orte, mehrere Oks:** Ein Block kann in mehreren Kategorien/Flows erscheinen und braucht dann an jedem Ort ein eigenes Ok. Leiste «n Orte» im Block-Kopf mit Sprüngen; Dateiansicht zeigt pro Zeile, wie vielen Orten sie zugewiesen ist (Häkchen dort gilt für alle Orte).
+- **Fokus-Werkzeuge:** Blöcke einzeln ein-/ausklappen, alle ein-/ausklappen, «Einzeln durchgehen» mit «Ok & weiter»; im Flow zusätzlich Schritte aus-/einblenden, Erledigte ausblenden und «nur dieser Zweig».
+- Version in der Statusleiste und in `GET /api/me` (`version`).
+- Release-Skript `release.sh` und dieser Changelog.
+
+### Geändert
+- Ein Flow pro Einstiegspunkt: gemeinsam genutzte Funktionen erscheinen in jedem Flow, der sie erreicht (in Aufrufgruppen bis 20 Funktionen).
+- `review.json`: neues Feld `okAt` für Markierungen pro Ort; `POST …/marks` akzeptiert `place` pro Zeile. Bestehende Dateien bleiben gültig.
+- `analysis.json`: neue Felder `segments[].places`, `segments[].testedBy`, `tests[]`. Bestehende Analysen werden automatisch neu berechnet.
+- Regeln: neues Feld `symbols` für Pfad-Regeln (Testdateien werden weiter in Funktionen zerlegt).
+- Das Docker-Build führt die Unit-Tests aus.
+
+## [0.2.0] – 2026-11-13
+
+### Neu
+- **GitLab** als zweiter Provider (gitlab.com und self-managed über `SCR_GITLAB_URL`): MR-Liste, Diffs, Kommentare inkl. Inline-Kommentare. Token aus `GITLAB_TOKEN` oder `glab`.
+- Pull/Merge Requests per URL öffnen (auch öffentliche GitLab-MRs ohne Token).
+- Go: Funktionen, Methoden, Typen und Aufrufe über Pakete hinweg.
+- Natives Docker-Image auf Docker Hub: `culmi/smart-code-review`.
+
+## [0.1.0] – 2026-11-13
+
+### Neu
+- Erster PoC: offene GitHub-PRs (eigene und Review-Anfragen), Zerlegung in Segmente, Quick wins per Regeln (ohne KI), Datenflüsse in Aufrufreihenfolge mit Diagramm, zeilenweises «ok» lokal in JSON-Dateien für Agenten, Inline-Kommentare werden sofort veröffentlicht, IntelliJ-artiges UI.
+
+[Unreleased]: https://github.com/cyrilleulmi/smart-code-review/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/cyrilleulmi/smart-code-review/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/cyrilleulmi/smart-code-review/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/cyrilleulmi/smart-code-review/releases/tag/v0.1.0
