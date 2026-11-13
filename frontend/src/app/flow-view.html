@@ -102,9 +102,21 @@
 
 <div class="cards" #cards>
   <svg class="rails" [attr.height]="railHeight()" [attr.width]="railWidth()" aria-hidden="true">
+    <defs>
+      @for (m of markers; track m) {
+        <marker [attr.id]="'rail-end-' + m" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+          <path d="M0 0 L8 4 L0 8 z" [style.fill]="'var(--edge-' + m + ')'" />
+        </marker>
+        <marker [attr.id]="'rail-start-' + m" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5">
+          <circle cx="4" cy="4" r="3.5" [style.fill]="'var(--edge-' + m + ')'" />
+        </marker>
+      }
+    </defs>
     @for (c of connectors(); track $index) {
-      <path [attr.d]="c.d" class="rail" [class.hot]="hovered() === c.from || hovered() === c.to" [class.http]="c.http"
-            [style.stroke]="'var(--edge-' + c.c + ')'" />
+      <path [attr.d]="c.d" class="rail" [class.hot]="hovered() === c.from || hovered() === c.to"
+            [class.dim]="!!hovered() && hovered() !== c.from && hovered() !== c.to" [class.http]="c.http"
+            [style.stroke]="'var(--edge-' + c.c + ')'"
+            [attr.marker-start]="'url(#rail-start-' + c.c + ')'" [attr.marker-end]="'url(#rail-end-' + c.c + ')'" />
     }
   </svg>
   @for (n of nodes(); track n.step.segmentId; let i = $index) {
@@ -117,14 +129,14 @@
         [calledBy]="calledBy(n)"
         [edgeColors]="edgeColors()"
         [calledByColor]="calledByColor(n)"
-        [style.margin-left.px]="32 + n.depth * indent"
+        [style.margin-left.px]="gutter() + n.depth * indent"
         (mouseenter)="hovered.set(n.step.segmentId)"
         (mouseleave)="hovered.set(null)"
         (refClick)="scrollTo($event)"
         (calledByClick)="scrollToParent(n)"
       />
     } @else if (stepIndex() === null) {
-      <button type="button" class="hidden-step" [style.margin-left.px]="32 + n.depth * indent" (click)="toggleHidden(n.step.segmentId, $event)"
+      <button type="button" class="hidden-step" [style.margin-left.px]="gutter() + n.depth * indent" (click)="toggleHidden(n.step.segmentId, $event)"
               title="Einblenden">
         <span class="no">{{ n.no }}</span> {{ nodeName(n.segment) }}
         <span class="dim">{{ isDone(n.step.segmentId) && !hidden().has(n.step.segmentId) ? 'erledigt' : 'ausgeblendet' }}</span>

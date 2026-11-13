@@ -10,7 +10,7 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
-import { Flow, FlowStep, Segment } from './api';
+import { Flow, FlowEdge, FlowStep, Segment } from './api';
 import { CodeBlock } from './code-block';
 import { Icon, SymbolBadge } from './icon';
 import { EDGE_COLORS, areaColor, areaLabel, areaOfSegment, edgeColor, edgeColorIndex } from './look';
@@ -42,6 +42,9 @@ const COL_GAP = 56;
 const ROW_GAP = 12;
 /** Indentation of the code blocks per call level (the cards scroll horizontally when it gets deep). */
 const INDENT = 56;
+/** Horizontal distance between two connector lanes in the left margin. */
+const LANE = 11;
+const MIN_GUTTER = 32;
 
 /**
  * A data flow: a call-tree diagram on top, below the code of each step in call order. Call sites inside
@@ -63,6 +66,8 @@ export class FlowView {
   protected readonly connectors = signal<Connector[]>([]);
   protected readonly railHeight = signal(0);
   protected readonly railWidth = signal(0);
+  /** Left margin of the code blocks: room for one lane per (overlapping) connection. */
+  protected readonly gutter = signal(MIN_GUTTER);
   protected readonly markers = Array.from({ length: EDGE_COLORS }, (_, i) => i + 1);
   protected readonly areaColor = areaColor;
 
@@ -178,6 +183,7 @@ export class FlowView {
     afterRenderEffect((onCleanup) => {
       this.nodes();
       this.visible();
+      this.gutter();
       this.store.ok();
       this.store.okAt();
       this.store.comments();
@@ -349,12 +355,16 @@ export class FlowView {
   }
 
   /** Draws, in the left margin, one line per call: from the call-site line to the header of the called step. */
+  /**
+   * Draws, in the left margin, one line per call: from the call-site line to the header of the called step.
+   * Every line gets its own lane (LANE px apart); lanes are reused where lines do not overlap vertically.
+   * Long lines take the outer lanes and short ones the inner lanes, so they cross as little as possible.
+   */
   private layoutConnectors(): void {
     const host = this.cards().nativeElement;
-    const top = host.getBoundingClientRect().top;
-    const result: Connector[] = [];
-    const lanes = new Map<string, number>();
+    const box = host.getBoundingClientRect();
     const scroll = host.scrollLeft;
+    const items: { edge: FlowEdge; c: number; fromX: number; toX: number; y1: number; y2: number; lane: number }[] = [];
     for (const [i, edge] of this.flow().edges.entries()) {
       const fromEl = host.querySelector<HTMLElement>(`app-code-block[data-segment="${edge.from}"]`);
       const toEl = host.querySelector<HTMLElement>(`app-code-block[data-segment="${edge.to}"]`);
@@ -364,18 +374,38 @@ export class FlowView {
       const lineEl = edge.line != null ? fromEl.querySelector<HTMLElement>(`.row[data-new="${edge.line}"]`) : null;
       const fromRect = (lineEl ?? fromEl.querySelector<HTMLElement>('.head') ?? fromEl).getBoundingClientRect();
       const toHead = (toEl.querySelector<HTMLElement>('.head') ?? toEl).getBoundingClientRect();
-      const fromX = fromEl.getBoundingClientRect().left - host.getBoundingClientRect().left + scroll;
-      const toX = toEl.getBoundingClientRect().left - host.getBoundingClientRect().left + scroll;
-      const y1 = fromRect.top - top + fromRect.height / 2;
-      const y2 = toHead.top - top + toHead.height / 2;
-      const lane = lanes.get(edge.from) ?? lanes.size;
-      lanes.set(edge.from, lane);
-      const x = 6 + (lane % 6) * 4;
-      const r = 6;
-      const dir = y2 > y1 ? 1 : -1;
-      const d = `M ${fromX} ${y1} H ${x + r} Q ${x} ${y1}, ${x} ${y1 + r * dir} V ${y2 - r * dir} Q ${x} ${y2}, ${x + r} ${y2} H ${toX - 2}`;
-      result.push({ d, from: edge.from, to: edge.to, c: edgeColorIndex(i), http: edge.kind === 'http' });
+      items.push({
+        edge,
+        c: edgeColorIndex(i),
+        fromX: fromEl.getBoundingClientRect().left - box.left + scroll,
+        toX: toEl.getBoundingClientRect().left - box.left + scroll,
+        y1: fromRect.top - box.top + fromRect.height / 2,
+        y2: toHead.top - box.top + toHead.height / 2,
+        lane: 0,
+      });
     }
+    // lane assignment: longest first, each into the outermost lane that is free over its whole height
+    const lanes: [number, number][][] = [];
+    for (const item of [...items].sort((a, b) => Math.abs(b.y2 - b.y1) - Math.abs(a.y2 - a.y1))) {
+      const lo = Math.min(item.y1, item.y2) - 8;
+      const hi = Math.max(item.y1, item.y2) + 8;
+      let lane = lanes.findIndex((used) => used.every(([a, b]) => b < lo || a > hi));
+      if (lane < 0) {
+        lane = lanes.length;
+        lanes.push([]);
+      }
+      lanes[lane].push([lo, hi]);
+      item.lane = lane;
+    }
+    const result: Connector[] = items.map((item) => {
+      const x = 8 + item.lane * LANE;
+      const r = 5;
+      const { fromX, toX, y1, y2 } = item;
+      const dir = y2 > y1 ? 1 : -1;
+      const d = `M ${fromX - 2} ${y1} H ${x + r} Q ${x} ${y1}, ${x} ${y1 + r * dir} V ${y2 - r * dir} Q ${x} ${y2}, ${x + r} ${y2} H ${toX - 3}`;
+      return { d, from: item.edge.from, to: item.edge.to, c: item.c, http: item.edge.kind === 'http' };
+    });
+    this.gutter.set(Math.max(MIN_GUTTER, 8 + lanes.length * LANE + 14));
     this.railHeight.set(host.scrollHeight);
     this.railWidth.set(host.scrollWidth);
     this.connectors.set(result);

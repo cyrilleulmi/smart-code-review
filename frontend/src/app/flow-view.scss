@@ -149,9 +149,13 @@
 
 .rail {
   fill: none;
-  stroke-width: 1.6;
-  opacity: 0.7;
+  stroke-width: 1.8;
+  opacity: 0.85;
   transition: opacity 0.15s, stroke-width 0.15s;
+
+  &.dim {
+    opacity: 0.2;
+  }
 
   &.http {
     stroke-dasharray: 5 3;
