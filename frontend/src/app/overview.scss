@@ -421,3 +421,25 @@ h2 {
   background: rgba(84, 138, 247, 0.16);
   color: #7da5f8;
 }
+
+.h2-count {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--bg-hover);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.commits-hint {
+  margin: -4px 0 8px;
+  font-size: 12px;
+}
+
+.commits-box {
+  max-height: 340px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-panel-2);
+}

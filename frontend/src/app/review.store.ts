@@ -1,7 +1,10 @@
 import { Injectable, computed, inject, signal } from '@angular/core';
 import {
   Api,
+  Blame,
   Comment,
+  Commit,
+  Commits,
   LineMark,
   LogEntry,
   Me,
@@ -76,14 +79,32 @@ export class ReviewStore {
   readonly collapseCommand = signal<{ collapsed: boolean; seq: number } | null>(null);
   /** Segment to scroll to after the next render (e.g. clicked in a flow diagram). */
   readonly focusSegment = signal<string | null>(null);
+  /** Commits of the open PR and which commit made each changed line (loaded after the bundle). */
+  readonly commits = signal<Commits | null>(null);
+  readonly commitsLoading = signal(false);
+  /** Show only the changes of this commit (full sha); null = all changes of the PR. */
+  readonly commitFilter = signal<string | null>(null);
+  /** git blame annotations in the code blocks ("Annotate with Git Blame" in IntelliJ). */
+  readonly annotate = signal(readFlag('scr.annotate'));
+  /** path -> blame at the PR head; 'loading' while fetching, null when not available */
+  readonly blames = signal<ReadonlyMap<string, Blame | 'loading' | null>>(new Map());
+  /** commit from the URL, applied once the commits are loaded */
+  private pendingCommit: string | null = null;
+  private blameErrorShown = false;
 
   readonly prKey = computed<PrKey | null>(() => {
     const pr = this.bundle()?.pr;
     return pr ? { provider: pr.provider, owner: pr.owner, repo: pr.repo, number: pr.number } : null;
   });
 
+  /** The whole repository is open (number 0): every file counts as new, there are no review comments. */
+  readonly isRepo = computed(() => this.bundle()?.pr.number === 0);
+
   /** Label, sigil (#/!) and noun of the open PR's code host. */
-  readonly provider = computed(() => providerInfo(this.bundle()?.pr.provider));
+  readonly provider = computed(() => {
+    const info = providerInfo(this.bundle()?.pr.provider);
+    return this.isRepo() ? { ...info, sigil: '', noun: 'Repository' } : info;
+  });
 
   readonly segments = computed(() => {
     const map = new Map<string, Segment>();
@@ -91,6 +112,62 @@ export class ReviewStore {
       map.set(s.id, s);
     }
     return map;
+  });
+
+  /** PR commits by sha. */
+  readonly commitBySha = computed(() => {
+    const map = new Map<string, Commit>();
+    for (const c of this.commits()?.commits ?? []) {
+      map.set(c.sha, c);
+    }
+    return map;
+  });
+
+  /** Position of each PR commit, 1 = oldest. */
+  readonly commitNo = computed(() => {
+    const map = new Map<string, number>();
+    (this.commits()?.commits ?? []).forEach((c, i) => map.set(c.sha, i + 1));
+    return map;
+  });
+
+  /** "path\0key" -> sha of the commit that made the change on that line */
+  readonly lineCommit = computed(() => {
+    const map = new Map<string, string>();
+    for (const [path, byKey] of Object.entries(this.commits()?.lines ?? {})) {
+      for (const [key, sha] of Object.entries(byKey)) {
+        map.set(path + SEP + key, sha);
+      }
+    }
+    return map;
+  });
+
+  /** Number of changed lines of the PR diff per commit. */
+  readonly commitLineCount = computed(() => {
+    const map = new Map<string, number>();
+    for (const sha of this.lineCommit().values()) {
+      map.set(sha, (map.get(sha) ?? 0) + 1);
+    }
+    return map;
+  });
+
+  /** The commit the views are filtered to, if any. */
+  readonly activeCommit = computed(() => {
+    const sha = this.commitFilter();
+    return sha ? this.commitBySha().get(sha) ?? null : null;
+  });
+
+  /** Segments with at least one line of the selected commit; null = no commit selected. */
+  private readonly commitSegments = computed<ReadonlySet<string> | null>(() => {
+    const sha = this.commitFilter();
+    if (!sha) return null;
+    const lc = this.lineCommit();
+    const result = new Set<string>();
+    for (const s of this.bundle()?.analysis.segments ?? []) {
+      if (s.lineKeys.some((k) => lc.get(s.path + SEP + k) === sha)) {
+        result.add(s.id);
+      }
+    }
+    return result;
   });
 
   /** Categories switched off by the user (global setting): hidden, and their places need no ok. */
@@ -177,7 +254,7 @@ export class ReviewStore {
     this.loadPrs();
     const fromHash = parseHash(location.hash);
     if (fromHash) {
-      this.open(fromHash.pr, fromHash.selection);
+      this.open(fromHash.pr, fromHash.selection, fromHash.commit);
     }
     window.addEventListener('focus', () => this.refreshState());
   }
@@ -196,7 +273,8 @@ export class ReviewStore {
     });
   }
 
-  open(pr: PrKey, selection: Selection = { kind: 'overview' }): void {
+  open(pr: PrKey, selection: Selection = { kind: 'overview' }, commit: string | null = null): void {
+    this.pendingCommit = commit;
     this.loading.set(`Lade ${prLabel(pr)} …`);
     this.error.set(null);
     this.api.bundle(pr).subscribe({
@@ -206,6 +284,14 @@ export class ReviewStore {
         this.error.set(errorMessage(e));
       },
     });
+  }
+
+  /** Analyses the whole repository of the open PR (its default branch) like a pull request. */
+  openRepository(): void {
+    const key = this.prKey();
+    if (key) {
+      this.open({ ...key, number: 0 });
+    }
   }
 
   /** Opens a PR/MR by its web URL (GitHub or GitLab, also ones not in the list). */
@@ -254,6 +340,7 @@ export class ReviewStore {
   }
 
   close(): void {
+    this.resetCommits();
     this.bundle.set(null);
     this.comments.set([]);
     this.ok.set(new Set());
@@ -262,11 +349,16 @@ export class ReviewStore {
   }
 
   private applyBundle(b: ReviewBundle, selection: Selection): void {
+    const previous = this.bundle()?.pr;
+    if (!previous || prLabel(previous) !== prLabel(b.pr) || previous.headSha !== b.pr.headSha) {
+      this.resetCommits(); // another PR, or new commits: blame and attribution are outdated
+    }
     this.bundle.set(b);
     this.applyState(b.state);
     this.loading.set(null);
     this.select(this.isValidSelection(selection, b) ? selection : { kind: 'overview' });
     this.loadComments();
+    this.loadCommits();
   }
 
   private isValidSelection(sel: Selection, b: ReviewBundle): boolean {
@@ -305,10 +397,122 @@ export class ReviewStore {
   select(selection: Selection): void {
     this.selection.set(selection);
     this.collapseCommand.set(null);
+    this.updateHash();
+  }
+
+  private updateHash(): void {
     const key = this.prKey();
     if (key) {
-      history.replaceState(null, '', '#' + formatHash(key, selection));
+      history.replaceState(null, '', '#' + formatHash(key, this.selection(), this.commitFilter()));
     }
+  }
+
+  // ------------------------------------------------------------- commits & blame
+
+  private resetCommits(): void {
+    this.commits.set(null);
+    this.commitFilter.set(null);
+    this.blames.set(new Map());
+    this.blameErrorShown = false;
+  }
+
+  loadCommits(): void {
+    const key = this.prKey();
+    if (!key) return;
+    this.commitsLoading.set(true);
+    this.api.commits(key).subscribe({
+      next: (c) => {
+        this.commitsLoading.set(false);
+        this.commits.set(c);
+        if (c.error) {
+          this.notify('Commits nicht verfügbar: ' + c.error);
+        }
+        const pending = this.pendingCommit;
+        this.pendingCommit = null;
+        const match = pending ? c.commits.find((x) => x.sha.startsWith(pending)) : null;
+        if (match) {
+          this.setCommitFilter(match.sha);
+        }
+      },
+      error: (e) => {
+        this.commitsLoading.set(false);
+        this.notify('Commits nicht verfügbar: ' + errorMessage(e));
+      },
+    });
+  }
+
+  /** Shows only the changes of one commit (null: all). Marks then apply to that commit's lines only. */
+  setCommitFilter(sha: string | null): void {
+    this.commitFilter.set(sha);
+    this.collapseCommand.set(null);
+    this.updateHash();
+  }
+
+  /** Previous/next commit while filtering (commits without lines in the PR diff are skipped). */
+  stepCommit(delta: number): void {
+    const list = (this.commits()?.commits ?? []).filter((c) => (this.commitLineCount().get(c.sha) ?? 0) > 0);
+    const i = list.findIndex((c) => c.sha === this.commitFilter());
+    const next = list[i < 0 ? (delta > 0 ? 0 : list.length - 1) : i + delta];
+    if (next) {
+      this.setCommitFilter(next.sha);
+    }
+  }
+
+  /** Changed lines of the PR diff made by a commit, everywhere (place null). */
+  commitLines(sha: string): LineMark[] {
+    const lc = this.lineCommit();
+    const ignored = this.ignored();
+    const result: LineMark[] = [];
+    for (const s of this.bundle()?.analysis.segments ?? []) {
+      if (ignored.has(s.id)) continue;
+      for (const key of s.lineKeys) {
+        if (lc.get(s.path + SEP + key) === sha) {
+          result.push({ path: s.path, key, place: null });
+        }
+      }
+    }
+    return result;
+  }
+
+  /** Review progress of a commit's lines (a line counts when it is ok at all its places). */
+  commitProgress(sha: string): Progress {
+    const lines = this.commitLines(sha);
+    return { ok: lines.filter((l) => this.isOkAt(l.path, l.key, null)).length, total: lines.length };
+  }
+
+  /** sha of the commit that made the change on a line of the PR diff, if known */
+  commitOfLine(path: string, key: string): string | undefined {
+    return this.lineCommit().get(path + SEP + key);
+  }
+
+  /** Is the change on this line part of the selected commit? Always true without a commit filter. */
+  inCommit(path: string, key: string): boolean {
+    const sha = this.commitFilter();
+    return !sha || this.lineCommit().get(path + SEP + key) === sha;
+  }
+
+  toggleAnnotate(): void {
+    const on = !this.annotate();
+    this.annotate.set(on);
+    writeFlag('scr.annotate', on);
+  }
+
+  /** Fetches the blame of a file once (cached by the backend per head commit). */
+  ensureBlame(path: string): void {
+    const key = this.prKey();
+    if (!key || this.blames().has(path)) return;
+    const put = (value: Blame | 'loading' | null) => this.blames.set(new Map(this.blames()).set(path, value));
+    put('loading');
+    this.api.blame(key, path).subscribe({
+      next: (b) => put(b),
+      error: (e) => {
+        put(null);
+        if (!this.blameErrorShown) {
+          this.blameErrorShown = true;
+          this.notify('Blame nicht verfügbar: ' + errorMessage(e));
+        }
+      },
+    });
   }
 
   /** Navigates to a segment at another place than the current one (its first place, else its file). */
@@ -344,8 +548,19 @@ export class ReviewStore {
     return null;
   }
 
-  /** The segments a selection shows, each at the place it is shown at. */
+  /** The segments a selection shows, each at the place it is shown at (only those of the selected commit). */
   slotsFor(sel: Selection): Slot[] {
+    const slots = this.allSlotsFor(sel);
+    const only = this.commitSegments();
+    return only ? slots.filter((s) => only.has(s.segmentId)) : slots;
+  }
+
+  /** Does the segment change anything in the selected commit (always true without a commit filter)? */
+  inCommitSegment(segmentId: string): boolean {
+    return this.commitSegments()?.has(segmentId) ?? true;
+  }
+
+  private allSlotsFor(sel: Selection): Slot[] {
     const b = this.bundle();
     if (!b) return [];
     const cats = b.analysis.categories;
@@ -417,8 +632,11 @@ export class ReviewStore {
         continue;
       }
       seen.add(id);
-      total += s.lineKeys.length;
       for (const k of s.lineKeys) {
+        if (!this.inCommit(s.path, k)) {
+          continue;
+        }
+        total++;
         if (this.isOkAt(s.path, k, slot.place)) {
           done++;
         }
@@ -438,7 +656,9 @@ export class ReviewStore {
       }
       seen.add(slot.segmentId + SEP + slot.place);
       for (const key of s.lineKeys) {
-        result.push({ path: s.path, key, place: slot.place });
+        if (this.inCommit(s.path, key)) {
+          result.push({ path: s.path, key, place: slot.place });
+        }
       }
     }
     return result;
@@ -552,10 +772,26 @@ function lineOf(key: string | undefined): number {
   return key ? Number(key.substring(1)) : 0;
 }
 
-// ------------------------------------------------------------- hash routing: #/github/owner/repo/12/flow/flow-1
+function readFlag(name: string): boolean {
+  try {
+    return localStorage.getItem(name) === 'true';
+  } catch {
+    return false;
+  }
+}
 
-function formatHash(pr: PrKey, sel: Selection): string {
-  const base = `/${pr.provider}/${pr.owner}/${pr.repo}/${pr.number}`;
+function writeFlag(name: string, on: boolean): void {
+  try {
+    localStorage.setItem(name, String(on));
+  } catch {
+    // storage unavailable - the setting is just not remembered
+  }
+}
+
+// ------------------------------------------------------------- hash routing: #/github/owner/repo/12[/c/<sha>]/flow/flow-1
+
+function formatHash(pr: PrKey, sel: Selection, commit: string | null): string {
+  const base = `/${pr.provider}/${pr.owner}/${pr.repo}/${pr.number}` + (commit ? `/c/${commit.substring(0, 12)}` : '');
   switch (sel.kind) {
     case 'overview':
       return base;
@@ -566,12 +802,17 @@ function formatHash(pr: PrKey, sel: Selection): string {
   }
 }
 
-function parseHash(hash: string): { pr: PrKey; selection: Selection } | null {
+function parseHash(hash: string): { pr: PrKey; selection: Selection; commit: string | null } | null {
   const parts = hash.replace(/^#\/?/, '').split('/');
   if (parts.length < 4 || !/^\d+$/.test(parts[3])) {
     return null;
   }
   const pr = { provider: parts[0], owner: parts[1], repo: parts[2], number: Number(parts[3]) };
+  let commit: string | null = null;
+  if (parts[4] === 'c' && /^[0-9a-f]{4,40}$/i.test(parts[5] ?? '')) {
+    commit = parts[5].toLowerCase();
+    parts.splice(4, 2);
+  }
   const kind = parts[4];
   const value = parts[5] ? decodeURIComponent(parts[5]) : '';
   let selection: Selection = { kind: 'overview' };
@@ -580,5 +821,5 @@ function parseHash(hash: string): { pr: PrKey; selection: Selection } | null {
   } else if ((kind === 'category' || kind === 'group' || kind === 'flow') && value) {
     selection = { kind, id: value };
   }
-  return { pr, selection };
+  return { pr, selection, commit };
 }

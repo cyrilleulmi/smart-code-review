@@ -134,6 +134,10 @@ public final class Analyzer {
         String importsText;
         Set<Integer> importLines; // 0-based
         boolean module; // uses import/export/require; plain scripts share one global scope
+        /** importsFrom results by callee (path, name, container): the same pair is asked once per segment pair */
+        final Map<String, Boolean> imports = new HashMap<>();
+        /** whether the code mentions a class name (Java/Kotlin same-package check) */
+        final Map<String, Boolean> mentions = new HashMap<>();
     }
 
     private static final class Work {
@@ -765,6 +769,17 @@ public final class Analyzer {
         if (callee.ctx == null) {
             return false;
         }
+        // asked for every pair of segments: answer once per caller file and callee (whole repositories!)
+        String key = callee.file.path() + "\u0000" + callee.symbol.name() + "\u0000" + callee.symbol.container();
+        Boolean known = caller.imports.get(key);
+        if (known == null) {
+            known = importsFromUncached(caller, callee);
+            caller.imports.put(key, known);
+        }
+        return known;
+    }
+
+    private static boolean importsFromUncached(FileCtx caller, Work callee) {
         // classic <script> files without modules: all top-level functions are global
         boolean script = "javascript".equals(caller.diff.language()) && "javascript".equals(callee.file.language());
         if (script && !caller.module && !callee.ctx.module) {
@@ -804,8 +819,10 @@ public final class Analyzer {
         }
         // Java/Kotlin: classes of the same package need no import
         if (("java".equals(caller.diff.language()) || "kotlin".equals(caller.diff.language())) && callee.symbol.container() != null) {
-            Pattern cls = Pattern.compile("\\b" + Pattern.quote(callee.symbol.container()) + "\\b");
-            return caller.text.code.stream().anyMatch(l -> cls.matcher(l).find());
+            return caller.mentions.computeIfAbsent(callee.symbol.container(), name -> {
+                Pattern cls = Pattern.compile("\\b" + Pattern.quote(name) + "\\b");
+                return caller.text.code.stream().anyMatch(l -> cls.matcher(l).find());
+            });
         }
         return false;
     }

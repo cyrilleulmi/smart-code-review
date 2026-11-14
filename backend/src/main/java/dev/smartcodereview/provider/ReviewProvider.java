@@ -34,8 +34,17 @@ public interface ReviewProvider {
     /** Open PRs authored by the user or waiting for the user's review. */
     List<PullRequestSummary> openPullRequests();
 
-    /** Recognises a PR web URL of this host. */
+    /** Recognises a PR web URL of this host, or a repository URL (number 0 = the whole repository). */
     Optional<PrRef> parseUrl(String url);
+
+    /** Default branch and its head commit. */
+    Model.Repository repository(PrRef ref);
+
+    /** The repository at a commit as a .tar.gz archive (one request instead of one per file). */
+    byte[] archive(PrRef ref, String sha);
+
+    /** The newest commits reachable from sha (newest first), at most max. */
+    List<Model.Commit> branchCommits(PrRef ref, String sha, int max);
 
     /** Fetches PR metadata and the full diff. */
     Snapshot fetchSnapshot(PrRef ref);
@@ -45,6 +54,15 @@ public interface ReviewProvider {
 
     /** Content of a file at a commit, empty if missing/binary/too large. */
     Optional<String> fileContent(PrRef ref, String path, String sha);
+
+    /** Commits of the PR (any order; each with its parents). Additions/deletions/files may be empty. */
+    List<Model.Commit> commits(PrRef ref);
+
+    /** The files a commit changed compared with its first parent, with parsed hunks. */
+    List<Model.DiffFile> commitDiff(PrRef ref, String sha);
+
+    /** git blame of a file at a commit: who last changed which lines. */
+    Model.Blame blame(PrRef ref, String path, String sha);
 
     List<Comment> comments(PrRef ref);
 

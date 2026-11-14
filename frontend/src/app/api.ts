@@ -46,9 +46,10 @@ export function ownerLabel(owner: string): string {
   return owner.replaceAll('~', '/');
 }
 
-/** e.g. "cyrilleulmi/spongecoach#13" or "gitlab-org/cli!4347" */
+/** e.g. "cyrilleulmi/spongecoach#13" or "gitlab-org/cli!4347"; number 0 = the whole repository */
 export function prLabel(pr: { provider: string; owner: string; repo: string; number: number }): string {
-  return `${ownerLabel(pr.owner)}/${pr.repo}${providerInfo(pr.provider).sigil}${pr.number}`;
+  const repo = `${ownerLabel(pr.owner)}/${pr.repo}`;
+  return pr.number === 0 ? `${repo} (Repository)` : `${repo}${providerInfo(pr.provider).sigil}${pr.number}`;
 }
 
 export type PrRole = 'authored' | 'review-requested';
@@ -89,6 +90,49 @@ export interface PullRequestInfo {
   deletions: number;
   changedFiles: number;
   startSha: string | null;
+}
+
+/** A commit (Model.Commit). additions/deletions/files: vs. its first parent (0/empty in blame results). */
+export interface Commit {
+  sha: string;
+  title: string;
+  message: string;
+  author: string | null;
+  authorLogin: string | null;
+  avatarUrl: string | null;
+  date: string | null;
+  url: string | null;
+  parents: string[];
+  additions: number;
+  deletions: number;
+  files: string[];
+}
+
+/** commits.json: the PR's commits (oldest first) and which commit made each changed line. */
+export interface Commits {
+  version: number;
+  headSha: string;
+  generatedAt: string;
+  commits: Commit[];
+  /** path -> line key -> sha */
+  lines: Record<string, Record<string, string>>;
+  /** commit of a merged side branch -> merge commit its changes are attributed to */
+  mergedVia: Record<string, string>;
+  error: string | null;
+}
+
+export interface BlameRange {
+  start: number;
+  end: number;
+  sha: string;
+}
+
+/** git blame of a file at the PR head */
+export interface Blame {
+  path: string;
+  sha: string;
+  ranges: BlameRange[];
+  commits: Commit[];
 }
 
 export interface LineRef {
@@ -368,6 +412,14 @@ export class Api {
 
   comments(pr: PrKey): Observable<Comment[]> {
     return this.http.get<Comment[]>(`${base(pr)}/comments`);
+  }
+
+  commits(pr: PrKey): Observable<Commits> {
+    return this.http.get<Commits>(`${base(pr)}/commits`);
+  }
+
+  blame(pr: PrKey, path: string): Observable<Blame> {
+    return this.http.get<Blame>(`${base(pr)}/blame`, { params: { path } });
   }
 
   postComment(pr: PrKey, comment: NewComment): Observable<Comment> {

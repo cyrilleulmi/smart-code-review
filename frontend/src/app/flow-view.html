@@ -69,7 +69,7 @@
     <div class="node" role="listitem" tabindex="0"
             [style.left.px]="n.x" [style.top.px]="n.y" [style.width.px]="d.nodeW" [style.height.px]="d.nodeH"
             [class.done]="p.total > 0 && p.ok === p.total" [class.quick]="n.segment.category === 'quick-wins'"
-            [class.off]="!visible().has(n.step.segmentId)" [class.current]="stepIndex() === i" [class.root]="focusRoot() === n.step.segmentId"
+            [class.off]="!visible().has(n.step.segmentId)" [class.other-commit]="!store.inCommitSegment(n.step.segmentId)" [class.current]="stepIndex() === i" [class.root]="focusRoot() === n.step.segmentId"
             [style.--area]="areaColor(areaOf(n.segment))"
             (mouseenter)="hovered.set(n.step.segmentId)" (mouseleave)="hovered.set(null)"
             (click)="scrollTo(n.step.segmentId)" (keydown.enter)="scrollTo(n.step.segmentId)">

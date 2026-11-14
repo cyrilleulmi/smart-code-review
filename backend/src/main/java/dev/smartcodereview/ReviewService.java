@@ -6,10 +6,14 @@ import dev.smartcodereview.analysis.Analyzer;
 import dev.smartcodereview.analysis.Languages;
 import dev.smartcodereview.analysis.OpenApi;
 import dev.smartcodereview.analysis.Rules;
+import dev.smartcodereview.commits.Attribution;
 import dev.smartcodereview.model.Model;
 import dev.smartcodereview.model.Model.Account;
 import dev.smartcodereview.model.Model.ApiOperation;
 import dev.smartcodereview.model.Model.Analysis;
+import dev.smartcodereview.model.Model.Blame;
+import dev.smartcodereview.model.Model.Commit;
+import dev.smartcodereview.model.Model.Commits;
 import dev.smartcodereview.model.Model.Comment;
 import dev.smartcodereview.model.Model.DiffFile;
 import dev.smartcodereview.model.Model.FileSummary;
@@ -28,6 +32,7 @@ import dev.smartcodereview.model.Model.Segment;
 import dev.smartcodereview.model.Model.Snapshot;
 import dev.smartcodereview.provider.ProviderException;
 import dev.smartcodereview.provider.ReviewProvider;
+import dev.smartcodereview.repo.RepositorySnapshot;
 import dev.smartcodereview.review.LineAcceptance;
 import dev.smartcodereview.store.DataStore;
 import io.quarkus.logging.Log;
@@ -237,6 +242,9 @@ public class ReviewService {
     }
 
     private Snapshot fetch(PrRef ref) {
+        if (ref.number() == 0) {
+            return fetchRepository(ref);
+        }
         Snapshot snapshot = provider(ref.provider()).fetchSnapshot(ref);
         try {
             Files.deleteIfExists(prDirFile(ref, "structure.json")); // re-read for the new head
@@ -248,6 +256,28 @@ public class ReviewService {
         store.write(snapshotFile(ref), snapshot);
         Log.infof("Fetched %s: %d files, %d sources", ref.key(), snapshot.files().size(), wanted.size());
         return snapshot;
+    }
+
+    /**
+     * The whole repository at the head of its default branch, as a PR in which every file is new. One archive
+     * download; the directories and API contracts come from it too (structure.json).
+     */
+    private Snapshot fetchRepository(PrRef ref) {
+        ReviewProvider provider = provider(ref.provider());
+        Model.Repository repo = provider.repository(ref);
+        long t0 = System.currentTimeMillis();
+        byte[] archive = provider.archive(ref, repo.headSha());
+        RepositorySnapshot.Result r = RepositorySnapshot.build(ref, repo, ref.owner().replace('~', '/'), archive);
+        Path sourcesDir = store.sourcesDir(ref);
+        List<DiffFile> wanted = wantedSources(r.snapshot(), rules());
+        for (DiffFile f : wanted) {
+            store.writeText(DataStore.resolveInside(sourcesDir, f.path()), r.sources().get(f.path()));
+        }
+        store.write(prDirFile(ref, "structure.json"), r.structure());
+        store.write(snapshotFile(ref), r.snapshot());
+        Log.infof("Fetched repository %s @ %s in %d ms: %d files, %d analysed", ref.key(), repo.headSha(),
+                System.currentTimeMillis() - t0, r.snapshot().files().size(), wanted.size());
+        return r.snapshot();
     }
 
     /** Files whose new version is needed to find functions: code files without a path rule, or with `symbols: true`. */
@@ -468,6 +498,9 @@ public class ReviewService {
     // ------------------------------------------------------------------ comments
 
     public List<Comment> comments(PrRef ref) {
+        if (ref.number() == 0) {
+            return List.of(); // a repository has no review comments
+        }
         try {
             List<Comment> comments = provider(ref.provider()).comments(ref);
             store.write(prDirFile(ref, "comments.json"), comments);
@@ -479,12 +512,102 @@ public class ReviewService {
     }
 
     public Comment postComment(PrRef ref, NewComment comment) {
+        if (ref.number() == 0) {
+            throw new ProviderException(400, "Beim ganzen Repository gibt es keinen Pull Request, an den Kommentare gehen könnten");
+        }
         if (comment.body() == null || comment.body().isBlank()) {
             throw new ProviderException(400, "Kommentar ist leer");
         }
         Snapshot snapshot = store.read(snapshotFile(ref), Snapshot.class)
                 .orElseThrow(() -> new ProviderException(409, "PR zuerst öffnen"));
         return provider(ref.provider()).postComment(ref, snapshot, comment);
+    }
+
+    // ------------------------------------------------------------------ commits & blame
+
+    /**
+     * The PR's commits and which commit made each changed line (commits.json; recomputed when the head or the
+     * attribution algorithm changed). Commit diffs never change, so they are fetched only here. On a provider
+     * error the last result is returned if there is one, else an empty result carrying the error.
+     */
+    public Commits commits(PrRef ref) {
+        Snapshot snapshot = snapshot(ref);
+        Path file = prDirFile(ref, "commits.json");
+        synchronized (locks.computeIfAbsent(ref.key() + "#commits", k -> new Object())) {
+            Optional<Commits> cached = store.read(file, Commits.class);
+            if (cached.filter(c -> c.version() == Attribution.VERSION && c.error() == null
+                    && snapshot.pr().headSha().equals(c.headSha())).isPresent()) {
+                return cached.get();
+            }
+            try {
+                ReviewProvider provider = provider(ref.provider());
+                // whole repository: the newest commits of the branch (older lines stay without commit; blame shows them)
+                List<Commit> commits = ref.number() == 0
+                        ? provider.branchCommits(ref, snapshot.pr().headSha(), REPOSITORY_COMMITS)
+                        : provider.commits(ref);
+                Map<String, List<DiffFile>> diffs = new ConcurrentHashMap<>();
+                Semaphore limit = new Semaphore(6);
+                try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
+                    List<Future<?>> tasks = new ArrayList<>();
+                    for (Commit c : commits) {
+                        tasks.add(pool.submit(() -> {
+                            limit.acquireUninterruptibly();
+                            try {
+                                diffs.put(c.sha(), provider.commitDiff(ref, c.sha()));
+                            } finally {
+                                limit.release();
+                            }
+                        }));
+                    }
+                    for (Future<?> t : tasks) {
+                        try {
+                            t.get();
+                        } catch (Exception e) {
+                            Log.warnf("Commit diff of %s not available: %s", ref.key(), e.getMessage());
+                        }
+                    }
+                }
+                long t0 = System.currentTimeMillis();
+                Attribution.Result r = Attribution.compute(snapshot, commits, diffs);
+                Log.infof("Attributed %s to %d commits in %d ms", ref.key(), commits.size(), System.currentTimeMillis() - t0);
+                Commits result = new Commits(Attribution.VERSION, snapshot.pr().headSha(), Instant.now().toString(),
+                        r.ordered(), r.lines(), r.mergedVia(), null);
+                store.write(file, result);
+                return result;
+            } catch (ProviderException e) {
+                Log.warnf("Commits of %s not available: %s", ref.key(), e.getMessage());
+                return cached.orElseGet(() -> new Commits(Attribution.VERSION, snapshot.pr().headSha(), Instant.now().toString(),
+                        List.of(), Map.of(), Map.of(), e.getMessage()));
+            }
+        }
+    }
+
+    /** Commits of the branch looked at in a whole-repository review. */
+    static final int REPOSITORY_COMMITS = 50;
+
+    /** git blame of a changed file at the PR head; cached under blame/<path>.json. */
+    public Blame blame(PrRef ref, String path) {
+        Snapshot snapshot = snapshot(ref);
+        DiffFile f = snapshot.files().stream().filter(x -> x.path().equals(path)).findFirst()
+                .orElseThrow(() -> new ProviderException(404, "Datei ist nicht Teil des Pull Requests: " + path));
+        String sha = snapshot.pr().headSha();
+        if ("removed".equals(f.status())) {
+            return new Blame(path, sha, List.of(), List.of());
+        }
+        Path file = DataStore.resolveInside(store.prDir(ref).resolve("blame"), path + ".json");
+        Optional<Blame> cached = store.read(file, Blame.class).filter(b -> sha.equals(b.sha()));
+        if (cached.isPresent()) {
+            return cached.get();
+        }
+        Blame blame = provider(ref.provider()).blame(ref, path, sha);
+        store.write(file, blame);
+        return blame;
+    }
+
+    private Snapshot snapshot(PrRef ref) {
+        synchronized (lock(ref)) {
+            return store.read(snapshotFile(ref), Snapshot.class).orElseGet(() -> fetch(ref));
+        }
     }
 
     // ------------------------------------------------------------------ rules & files

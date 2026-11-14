@@ -21,7 +21,8 @@ public final class Model {
     /**
      * Identifies a pull/merge request across providers. owner is the GitHub owner or the GitLab namespace;
      * nested GitLab groups are written with "~" instead of "/" (group~subgroup) so the ref fits in a URL
-     * path and a directory name.
+     * path and a directory name. number 0 = the whole repository at the head of its default branch, reviewed
+     * like a pull request in which every file is new.
      */
     @RegisterForReflection
     public record PrRef(String provider, String owner, String repo, int number) {
@@ -81,6 +82,46 @@ public final class Model {
     /** The frozen state of a PR as fetched from the provider. New commits are out of scope (see docs). */
     @RegisterForReflection
     public record Snapshot(int schemaVersion, String fetchedAt, PullRequestInfo pr, List<DiffFile> files) {
+    }
+
+    /** A repository's default branch and its newest commit (to review the whole repository). */
+    @RegisterForReflection
+    public record Repository(String defaultBranch, String headSha, String url, String description, String headDate) {
+    }
+
+    // ---------------------------------------------------------------- commits
+
+    /**
+     * A commit. title: first line of the message. author: git author name, authorLogin: account on the code host
+     * (null if unknown). date: author date (ISO). parents: full SHAs. additions/deletions/files: what the commit
+     * changed compared with its first parent (0 / empty in blame results).
+     */
+    @RegisterForReflection
+    public record Commit(String sha, String title, String message, String author, String authorLogin, String avatarUrl,
+                         String date, String url, List<String> parents,
+                         int additions, int deletions, List<String> files) {
+    }
+
+    /**
+     * commits.json: the commits of the PR (oldest first) and which commit made each changed line of the PR diff.
+     * lines: path -> line key (as in segments[].lineKeys) -> sha. An added line belongs to the commit that last
+     * wrote it, a deleted line to the commit that removed it; lines that could not be attributed are missing.
+     * mergedVia: commits that are not on the first-parent chain of the head (merged side branches) -> the merge
+     * commit their changes are attributed to. version: of the attribution algorithm (recomputed when it changes).
+     */
+    @RegisterForReflection
+    public record Commits(int version, String headSha, String generatedAt, List<Commit> commits,
+                          Map<String, Map<String, String>> lines, Map<String, String> mergedVia, String error) {
+    }
+
+    /** Lines start..end (1-based, inclusive) of a file were last changed by commit sha. */
+    @RegisterForReflection
+    public record BlameRange(int start, int end, String sha) {
+    }
+
+    /** git blame of a file at the PR head (sha). commits: the commits the ranges refer to. */
+    @RegisterForReflection
+    public record Blame(String path, String sha, List<BlameRange> ranges, List<Commit> commits) {
     }
 
     // ---------------------------------------------------------------- analysis

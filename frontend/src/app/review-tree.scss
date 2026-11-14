@@ -7,6 +7,7 @@
 
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--border);
@@ -16,7 +17,7 @@
     align-items: center;
     gap: 5px;
     height: 26px;
-    padding: 0 9px;
+    padding: 0 7px;
     border: 0;
     border-radius: 5px;
     background: none;
@@ -196,5 +197,35 @@
 
   a {
     color: var(--accent-fg);
+  }
+}
+
+/* "only commit abc1234" while a commit is selected */
+.commit-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px 5px 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-panel));
+  color: var(--fg);
+  font-size: 12px;
+
+  span {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  b {
+    font-family: var(--font-code);
+    font-weight: 500;
+    color: var(--accent-fg);
+  }
+
+  .mark {
+    opacity: 1;
   }
 }

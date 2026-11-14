@@ -25,6 +25,9 @@
     </button>
   }
   <span class="spacer"></span>
+  @if (blameLoading()) {
+    <span class="hint"><span class="spinner"></span> Blame …</span>
+  }
   @if (collapsed()) {
     <span class="hint">eingeklappt</span>
   }
@@ -69,10 +72,27 @@
       @if (line.type === 'gap') {
         <div class="gap">⋯ {{ line.text ?? (line.gapSize + ' unveränderte Zeilen') }}</div>
       } @else {
-        <div class="row" [class]="'row t-' + line.type" [class.ok]="line.own && isOk(line)" [class.foreign]="!line.own && line.type !== 'ctx'"
-             [class.has-refs]="!!line.refs?.length" [attr.data-new]="line.newLine">
+        @let byOtherCommit = otherCommit(line);
+        <div class="row" [class]="'row t-' + line.type" [class.ok]="line.own && !byOtherCommit && isOk(line)" [class.foreign]="!line.own && line.type !== 'ctx'"
+             [class.other-commit]="byOtherCommit" [class.has-refs]="!!line.refs?.length" [attr.data-new]="line.newLine">
+          @if (annotations(); as an) {
+            @let a = an[i];
+            @if (a) {
+              <button type="button" class="g-blame" [class.pr]="a.no != null" [class.first]="a.first" [class.removed]="a.removed"
+                      [class.sel]="a.sha === store.commitFilter()" [style.--age]="a.age" [title]="a.title" (click)="openAnnotation(a, $event)">
+                @if (a.first) {
+                  @if (a.no != null) {
+                    <span class="b-no">{{ a.removed ? '−' : '' }}{{ a.no }}</span>
+                  }
+                  <span class="b-text">{{ a.text }}</span>
+                }
+              </button>
+            } @else {
+              <span class="g-blame empty"></span>
+            }
+          }
           <span class="g-check">
-            @if (line.own) {
+            @if (line.own && !byOtherCommit) {
               @let m = multi(line);
               @let other = elsewhere(line);
               <button type="button" class="check" [class.on]="isOk(line)" [class.part]="isHalf(line)"
@@ -90,7 +110,7 @@
           <span class="g-num">{{ line.oldLine ?? '' }}</span>
           <span class="g-num">{{ line.newLine ?? '' }}</span>
           <span class="g-act">
-            @if (line.inDiff && line.key) {
+            @if (line.inDiff && line.key && !store.isRepo()) {
               <button type="button" class="add-comment" (click)="openEditor(line)" [title]="'Kommentar auf ' + store.provider().label">
                 <app-icon name="comment" [size]="12" />
               </button>

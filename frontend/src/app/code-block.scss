@@ -220,6 +220,91 @@
   opacity: 0.45;
 }
 
+/* commit view: a change made by another commit of the PR */
+.row.other-commit {
+  background: none;
+  opacity: 0.4;
+
+  .g-sign,
+  .g-num {
+    color: var(--gutter-fg);
+  }
+}
+
+/* ------------------------------------------------------------- git blame column */
+
+:host(.annotated) .row {
+  grid-template-columns: 168px 22px 38px 38px 18px 14px minmax(0, 1fr);
+}
+
+.g-blame {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: var(--code-line);
+  padding: 0 8px 0 6px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: color-mix(in srgb, var(--blame-recent) calc(var(--age, 0) * 26%), var(--blame-bg));
+  color: var(--fg-muted);
+  font: 11px/1 var(--font-ui);
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+
+  &.empty {
+    background: var(--blame-bg);
+    cursor: default;
+  }
+
+  &.first {
+    box-shadow: inset 0 1px 0 var(--border);
+  }
+
+  &.pr {
+    box-shadow: inset 3px 0 0 var(--blame-pr);
+    color: var(--fg);
+
+    &.first {
+      box-shadow: inset 3px 0 0 var(--blame-pr), inset 0 1px 0 var(--border);
+    }
+  }
+
+  &.sel {
+    background: color-mix(in srgb, var(--accent) 35%, var(--blame-bg));
+  }
+
+  &.removed .b-text {
+    text-decoration: line-through;
+    text-decoration-color: var(--del-fg);
+  }
+
+  &:hover {
+    color: var(--fg);
+    background: var(--bg-hover);
+  }
+}
+
+.b-no {
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--blame-pr) 30%, transparent);
+  color: var(--blame-pr);
+  font-weight: 700;
+  font-size: 10px;
+  flex: none;
+}
+
+.b-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .row.ok {
   .src code {
     opacity: 0.5;

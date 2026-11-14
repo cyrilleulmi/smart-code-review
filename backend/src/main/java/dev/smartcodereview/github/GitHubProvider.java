@@ -45,6 +45,9 @@ public class GitHubProvider implements ReviewProvider {
 
     private static final int MAX_FILE_BYTES = 1_000_000;
     private static final Pattern PR_URL = Pattern.compile("^https?://github\\.com/([^/]+)/([^/]+)/pull/(\\d+).*$");
+    /** github.com/owner/repo, optionally .git, /tree/<branch>, query or fragment */
+    private static final Pattern REPO_URL =
+            Pattern.compile("^https?://github\\.com/([^/]+)/([^/?#]+?)(?:\\.git)?(?:/tree/[^?#]*)?/?(?:[?#].*)?$");
 
     @Inject
     ObjectMapper mapper;
@@ -94,7 +97,11 @@ public class GitHubProvider implements ReviewProvider {
     @Override
     public Optional<PrRef> parseUrl(String url) {
         Matcher m = PR_URL.matcher(url.trim());
-        return m.matches() ? Optional.of(new PrRef(id(), m.group(1), m.group(2), Integer.parseInt(m.group(3)))) : Optional.empty();
+        if (m.matches()) {
+            return Optional.of(new PrRef(id(), m.group(1), m.group(2), Integer.parseInt(m.group(3))));
+        }
+        Matcher r = REPO_URL.matcher(url.trim());
+        return r.matches() ? Optional.of(new PrRef(id(), r.group(1), r.group(2), 0)) : Optional.empty();
     }
 
     @Override
@@ -138,13 +145,7 @@ public class GitHubProvider implements ReviewProvider {
         List<DiffFile> files = new ArrayList<>();
         for (int page = 1; page <= 30; page++) {
             JsonNode batch = getJson(base + "/files?per_page=100&page=" + page);
-            for (JsonNode f : batch) {
-                String path = f.path("filename").asText();
-                String patch = f.path("patch").asText(null);
-                files.add(new DiffFile(path, f.path("previous_filename").asText(null), f.path("status").asText(),
-                        f.path("additions").asInt(), f.path("deletions").asInt(), Languages.of(path),
-                        patch == null, PatchParser.parse(patch)));
-            }
+            batch.forEach(f -> files.add(diffFile(f)));
             if (batch.size() < 100) {
                 break;
             }
@@ -174,6 +175,136 @@ public class GitHubProvider implements ReviewProvider {
         HttpResponse<byte[]> res = http.send(request("/repos/" + ref.owner() + "/" + ref.repo() + "/contents/" + encodedPath + "?ref=" + sha)
                 .header("Accept", "application/vnd.github.raw+json").GET().build(), HttpResponse.BodyHandlers.ofByteArray());
         return res.statusCode() == 200 ? Tokens.text(res.body(), MAX_FILE_BYTES) : Optional.empty();
+    }
+
+    @Override
+    public List<Model.Commit> commits(PrRef ref) {
+        String base = "/repos/" + ref.owner() + "/" + ref.repo() + "/pulls/" + ref.number() + "/commits?per_page=100&page=";
+        List<Model.Commit> result = new ArrayList<>();
+        for (int page = 1; page <= 3; page++) { // GitHub lists at most 250 commits of a PR
+            JsonNode batch = getJson(base + page);
+            batch.forEach(c -> result.add(toCommit(c)));
+            if (batch.size() < 100) {
+                break;
+            }
+        }
+        return result;
+    }
+
+    @Override
+    public List<Model.Commit> branchCommits(PrRef ref, String sha, int max) {
+        List<Model.Commit> result = new ArrayList<>();
+        for (int page = 1; result.size() < max; page++) {
+            JsonNode batch = getJson("/repos/" + ref.owner() + "/" + ref.repo() + "/commits?sha=" + sha
+                    + "&per_page=" + Math.min(100, max) + "&page=" + page);
+            batch.forEach(c -> result.add(toCommit(c)));
+            if (batch.size() < Math.min(100, max)) {
+                break;
+            }
+        }
+        return result.size() > max ? result.subList(0, max) : result;
+    }
+
+    private static Model.Commit toCommit(JsonNode c) {
+        String message = c.path("commit").path("message").asText("");
+        List<String> parents = new ArrayList<>();
+        c.path("parents").forEach(p -> parents.add(p.path("sha").asText()));
+        return new Model.Commit(c.path("sha").asText(), firstLine(message), message,
+                c.path("commit").path("author").path("name").asText(null), c.path("author").path("login").asText(null),
+                c.path("author").path("avatar_url").asText(null), c.path("commit").path("author").path("date").asText(null),
+                c.path("html_url").asText(null), parents, 0, 0, List.of());
+    }
+
+    @Override
+    public Model.Repository repository(PrRef ref) {
+        String base = "/repos/" + ref.owner() + "/" + ref.repo();
+        JsonNode r = getJson(base);
+        String branch = r.path("default_branch").asText("main");
+        JsonNode head = getJson(base + "/commits/" + branch);
+        return new Model.Repository(branch, head.path("sha").asText(), r.path("html_url").asText(),
+                r.path("description").asText(""), head.path("commit").path("author").path("date").asText(null));
+    }
+
+    @Override
+    public byte[] archive(PrRef ref, String sha) {
+        String path = "/repos/" + ref.owner() + "/" + ref.repo() + "/tarball/" + sha;
+        HttpResponse<byte[]> res = http.send(request(path).GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+        if (res.statusCode() != 200) {
+            throw new ProviderException(res.statusCode() == 404 ? 404 : 502, "GitHub " + res.statusCode() + " auf " + path);
+        }
+        return res.body();
+    }
+
+    @Override
+    public List<DiffFile> commitDiff(PrRef ref, String sha) {
+        List<DiffFile> files = new ArrayList<>();
+        for (int page = 1; page <= 30; page++) {
+            JsonNode batch = getJson("/repos/" + ref.owner() + "/" + ref.repo() + "/commits/" + sha + "?per_page=100&page=" + page)
+                    .path("files");
+            batch.forEach(f -> files.add(diffFile(f)));
+            if (batch.size() < 100) {
+                break;
+            }
+        }
+        return files;
+    }
+
+    private static final String BLAME_QUERY = """
+            query($owner: String!, $repo: String!, $sha: GitObjectID!, $path: String!) {
+              repository(owner: $owner, name: $repo) {
+                object(oid: $sha) {
+                  ... on Commit {
+                    blame(path: $path) {
+                      ranges { startingLine endingLine commit { oid message authoredDate url author { name user { login avatarUrl } } } }
+                    }
+                  }
+                }
+              }
+            }""";
+
+    /** The REST API has no blame; GraphQL does. */
+    @Override
+    public Model.Blame blame(PrRef ref, String path, String sha) {
+        ObjectNode body = mapper.createObjectNode().put("query", BLAME_QUERY);
+        body.putObject("variables").put("owner", ref.owner()).put("repo", ref.repo()).put("sha", sha).put("path", path);
+        JsonNode res = http.json(request(URI.create(graphqlUrl())).header("Content-Type", "application/json")
+                .POST(http.body(body)).build(), "GraphQL blame");
+        if (res.path("errors").size() > 0) {
+            throw new ProviderException(502, "GitHub blame: " + res.path("errors").get(0).path("message").asText());
+        }
+        List<Model.BlameRange> ranges = new ArrayList<>();
+        Map<String, Model.Commit> commits = new LinkedHashMap<>();
+        for (JsonNode r : res.path("data").path("repository").path("object").path("blame").path("ranges")) {
+            JsonNode c = r.path("commit");
+            String oid = c.path("oid").asText();
+            ranges.add(new Model.BlameRange(r.path("startingLine").asInt(), r.path("endingLine").asInt(), oid));
+            commits.computeIfAbsent(oid, k -> {
+                String message = c.path("message").asText("");
+                JsonNode user = c.path("author").path("user");
+                return new Model.Commit(oid, firstLine(message), message, c.path("author").path("name").asText(null),
+                        user.path("login").asText(null), user.path("avatarUrl").asText(null), c.path("authoredDate").asText(null),
+                        c.path("url").asText(null), List.of(), 0, 0, List.of());
+            });
+        }
+        return new Model.Blame(path, sha, ranges, new ArrayList<>(commits.values()));
+    }
+
+    /** https://api.github.com/graphql, or https://host/api/graphql for GitHub Enterprise (REST: /api/v3). */
+    private String graphqlUrl() {
+        return apiUrl.endsWith("/api/v3") ? apiUrl.substring(0, apiUrl.length() - 3) + "graphql" : apiUrl + "/graphql";
+    }
+
+    private static String firstLine(String message) {
+        int nl = message.indexOf('\n');
+        return (nl < 0 ? message : message.substring(0, nl)).trim();
+    }
+
+    private static DiffFile diffFile(JsonNode f) {
+        String path = f.path("filename").asText();
+        String patch = f.path("patch").asText(null);
+        return new DiffFile(path, f.path("previous_filename").asText(null), f.path("status").asText(),
+                f.path("additions").asInt(), f.path("deletions").asInt(), Languages.of(path),
+                patch == null, PatchParser.parse(patch));
     }
 
     @Override
@@ -233,9 +364,13 @@ public class GitHubProvider implements ReviewProvider {
     }
 
     private HttpRequest.Builder request(String path) {
+        return request(URI.create(apiUrl + path));
+    }
+
+    private HttpRequest.Builder request(URI uri) {
         String t = token.get().orElseThrow(() -> new ProviderException(401,
                 "Kein GitHub-Token gefunden. Setze GITHUB_TOKEN oder melde dich mit `gh auth login` an."));
-        return HttpRequest.newBuilder(URI.create(apiUrl + path))
+        return HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(30))
                 .header("Authorization", "Bearer " + t)
                 .header("X-GitHub-Api-Version", "2022-11-28")

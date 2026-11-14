@@ -6,7 +6,22 @@
   <button type="button" role="tab" [class.active]="tab() === 'files'" (click)="setTab('files')">
     Dateien <span class="badge">{{ store.bundle()?.files?.length ?? 0 }}</span>
   </button>
+  <button type="button" role="tab" [class.active]="tab() === 'commits'" (click)="setTab('commits')">
+    Commits <span class="badge">{{ store.commits()?.commits?.length ?? '…' }}</span>
+  </button>
 </div>
+
+@if (store.activeCommit(); as ac) {
+  <div class="commit-filter" [title]="ac.message">
+    <app-icon name="commit" [size]="13" />
+    <span>Nur Commit <b>{{ ac.sha.substring(0, 7) }}</b> {{ ac.title }}</span>
+    <button type="button" class="mark" (click)="store.setCommitFilter(null)" title="Alle Commits zeigen"><app-icon name="close" [size]="12" /></button>
+  </div>
+}
+
+@if (tab() === 'commits') {
+  <div class="tree"><app-commit-list [compact]="true" /></div>
+} @else {
 
 <div class="tree" role="tree">
   @if (tab() !== 'files') {
@@ -57,7 +72,11 @@
     </div>
   }
 </div>
+@if (store.commitFilter() && rows().length === 0) {
+  <p class="off-note">Dieser Commit hat hier keine Änderungen.</p>
+}
 @if (tab() === 'categories' && store.disabledCategories().size) {
   <p class="off-note">{{ store.disabledCategories().size }} {{ store.disabledCategories().size === 1 ? 'Kategorie' : 'Kategorien' }} ausgeschaltet –
     <a href="javascript:void 0" (click)="store.select({ kind: 'overview' })">in der Übersicht einschalten</a></p>
+}
 }

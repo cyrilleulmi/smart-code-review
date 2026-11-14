@@ -7,6 +7,10 @@ Docker-Images: `culmi/smart-code-review:<version>` und `:latest` (= letztes Rele
 ## [Unreleased]
 
 ### Neu
+- **Commits:** Die Commits des PR/MR stehen im Review-Fenster (Tab *Commits*) und auf der Übersicht, mit Fortschritt pro Commit. Jede geänderte Zeile ist dem Commit zugeordnet, der sie zuletzt geschrieben bzw. entfernt hat (`commits.json`, API `GET …/commits`).
+- **Nur einen Commit ansehen:** Ein Klick auf einen Commit filtert alle Ansichten (Kategorien, Flows, Dateien, Übersicht) auf seine Änderungen. Änderungen anderer Commits sind im Code abgeblendet, Häkchen, «Block ok» und Fortschritt beziehen sich nur auf die Zeilen des Commits. In der Toolbar geht es mit ← → von Commit zu Commit; der Commit steht auch in der URL.
+- **Ganzes Repository analysieren:** Repository-URL ins Suchfeld oder Ordner-Knopf in der Toolbar eines PRs: Alle Dateien des Default-Branches werden wie ein Pull Request analysiert, in dem jede Datei neu ist (Kategorien, Flows, Komponenten, Tests, Commit-Filter, Blame). Geladen wird ein einziges Archiv; Commits sind die letzten 50 des Branches. API: Nummer `0`, z. B. `GET /api/prs/github/owner/repo/0`.
+- **Annotieren mit Git Blame:** Toolbar-Knopf blendet in allen Code-Blöcken eine Blame-Spalte ein (wie in IntelliJ): Datum bzw. Uhrzeit, Autor, Nummer des PR-Commits, ältere Zeilen blasser. Gelöschte Zeilen zeigen den Commit, der sie entfernt hat. Klick filtert auf den Commit. GitHub über GraphQL, GitLab über die Blame-API; Cache unter `blame/` (API `GET …/blame?path=…`).
 - **Halb akzeptiert:** Eine Zeile, die an mehreren Orten vorkommt (mehrere Kategorien, Flows) und an einem Ort akzeptiert wurde, erscheint an den anderen Orten als «halb akzeptiert»: halbes Häkchen, Hinweis «bereits an anderem Ort akzeptiert» (Klick springt dorthin, Tooltip nennt die Orte). Mehrere akzeptierte Orte werden einzeln geführt; das Zurücknehmen an einem Ort lässt die anderen stehen. Halb akzeptiert zählt im Fortschritt noch nicht.
 - **Beschreibung jeder Kategorie:** Unter dem Titel («Wie entsteht diese Kategorie?») und als Tooltip in der Übersicht steht, wie die Kategorie aufgebaut ist und wie sie in Gruppen unterteilt wird. Aus den Regeln abgeleitet, in `rules.json` pro Kategorie mit `builds` / `divides` überschreibbar.
 
@@ -14,6 +18,7 @@ Docker-Images: `culmi/smart-code-review:<version>` und `:latest` (= letztes Rele
 - **Kategorien sind Module** mit einheitlicher Schnittstelle (`CategoryModule`); Hinzufügen oder Entfernen einer Kategorie beeinflusst die anderen nicht. Datenflüsse bleiben als Ausnahme mit eigener Ansicht (`view: "flow"`). Vorbereitet, aber noch nicht umgesetzt: Kategorien von aussen hinzufügen (siehe Roadmap).
 - Die Regeln für Zeilen an mehreren Orten stehen an einer Stelle (`LineAcceptance`) statt doppelt in Backend und UI verstreut. Dateiformat von `review.json` unverändert.
 - `Analyzer.VERSION` 14: Analysen enthalten pro Kategorie `builds`, `divides`, `view`, `origin`; gespeicherte Analysen werden neu berechnet.
+- **Analyse viel schneller bei vielen Segmenten:** Die Import-Prüfung zwischen zwei Dateien wird pro Datei zwischengespeichert statt für jedes Paar von Segmenten neu gerechnet (eigenes Repo als Ganzes: 29 s → 2,5 s, Ergebnis identisch).
 
 ## [0.5.0] – 2026-11-13
 

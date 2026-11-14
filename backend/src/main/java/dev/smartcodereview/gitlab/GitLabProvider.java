@@ -34,10 +34,16 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -103,10 +109,17 @@ public class GitLabProvider implements ReviewProvider {
 
     @Override
     public Optional<PrRef> parseUrl(String url) {
-        Matcher m = Pattern.compile("^" + Pattern.quote(baseUrl) + "/(.+)/([^/]+)/-/merge_requests/(\\d+).*$").matcher(url.trim());
-        return m.matches()
-                ? Optional.of(new PrRef(id(), m.group(1).replace('/', '~'), m.group(2), Integer.parseInt(m.group(3))))
-                : Optional.empty();
+        String u = url.trim();
+        Matcher m = Pattern.compile("^" + Pattern.quote(baseUrl) + "/(.+)/([^/]+)/-/merge_requests/(\\d+).*$").matcher(u);
+        if (m.matches()) {
+            return Optional.of(new PrRef(id(), m.group(1).replace('/', '~'), m.group(2), Integer.parseInt(m.group(3))));
+        }
+        // project URL (whole repository): group[/sub]/project, optionally .git or /-/tree/<branch>
+        Matcher r = Pattern.compile("^" + Pattern.quote(baseUrl) + "/([^?#]+?)/([^/?#]+?)(?:\\.git)?(?:/-/tree/[^?#]*)?/?(?:[?#].*)?$").matcher(u);
+        if (r.matches() && !r.group(1).contains("/-") && !r.group(1).startsWith("-") && !r.group(2).equals("-")) {
+            return Optional.of(new PrRef(id(), r.group(1).replace('/', '~'), r.group(2), 0));
+        }
+        return Optional.empty();
     }
 
     @Override
@@ -148,22 +161,10 @@ public class GitLabProvider implements ReviewProvider {
         JsonNode diffs = diffs(base);
         int additions = 0, deletions = 0;
         for (JsonNode d : diffs) {
-            boolean deleted = d.path("deleted_file").asBoolean(false);
-            String path = deleted ? d.path("old_path").asText() : d.path("new_path").asText();
-            String status = d.path("new_file").asBoolean(false) ? "added" : deleted ? "removed"
-                    : d.path("renamed_file").asBoolean(false) ? "renamed" : "modified";
-            List<Hunk> hunks = PatchParser.parse(d.path("diff").asText(""));
-            int add = 0, del = 0;
-            for (Hunk h : hunks) {
-                for (DiffLine l : h.lines()) {
-                    add += "add".equals(l.type()) ? 1 : 0;
-                    del += "del".equals(l.type()) ? 1 : 0;
-                }
-            }
-            additions += add;
-            deletions += del;
-            files.add(new DiffFile(path, "renamed".equals(status) ? d.path("old_path").asText() : null, status,
-                    add, del, Languages.of(path), hunks.isEmpty(), hunks));
+            DiffFile f = diffFile(d);
+            additions += f.additions();
+            deletions += f.deletions();
+            files.add(f);
         }
 
         PullRequestInfo info = new PullRequestInfo(id(), ref.owner(), ref.repo(), ref.number(),
@@ -174,6 +175,149 @@ public class GitLabProvider implements ReviewProvider {
                 mr.path("created_at").asText(), mr.path("updated_at").asText(),
                 additions, deletions, files.size(), refs.path("start_sha").asText(null));
         return new Snapshot(Model.SCHEMA_VERSION, Instant.now().toString(), info, files);
+    }
+
+    /** One entry of a GitLab diff list (merge request or commit) as a DiffFile. */
+    private static DiffFile diffFile(JsonNode d) {
+        boolean deleted = d.path("deleted_file").asBoolean(false);
+        String path = deleted ? d.path("old_path").asText() : d.path("new_path").asText();
+        String status = d.path("new_file").asBoolean(false) ? "added" : deleted ? "removed"
+                : d.path("renamed_file").asBoolean(false) ? "renamed" : "modified";
+        List<Hunk> hunks = PatchParser.parse(d.path("diff").asText(""));
+        int add = 0, del = 0;
+        for (Hunk h : hunks) {
+            for (DiffLine l : h.lines()) {
+                add += "add".equals(l.type()) ? 1 : 0;
+                del += "del".equals(l.type()) ? 1 : 0;
+            }
+        }
+        boolean missing = hunks.isEmpty() || d.path("too_large").asBoolean(false) || d.path("collapsed").asBoolean(false);
+        return new DiffFile(path, "renamed".equals(status) ? d.path("old_path").asText() : null, status,
+                add, del, Languages.of(path), missing, hunks);
+    }
+
+    @Override
+    public List<Model.Commit> commits(PrRef ref) {
+        List<JsonNode> raw = new ArrayList<>();
+        for (int page = 1; page <= 10; page++) {
+            JsonNode batch = getJson(mrPath(ref) + "/commits?per_page=100&page=" + page);
+            batch.forEach(raw::add);
+            if (batch.size() < 100) {
+                break;
+            }
+        }
+        // the merge request endpoint may omit parent_ids; the commit endpoint has them
+        boolean needDetails = raw.stream().anyMatch(c -> c.path("parent_ids").isEmpty());
+        List<Model.Commit> result = new ArrayList<>();
+        try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
+            Semaphore limit = new Semaphore(6);
+            List<Future<JsonNode>> details = raw.stream().map(c -> pool.submit(() -> {
+                if (!needDetails) {
+                    return c;
+                }
+                limit.acquireUninterruptibly();
+                try {
+                    return getJson(projectPath(ref) + "/repository/commits/" + c.path("id").asText());
+                } finally {
+                    limit.release();
+                }
+            })).toList();
+            for (Future<JsonNode> f : details) {
+                result.add(toCommit(ref, get(f)));
+            }
+        }
+        Collections.reverse(result); // GitLab lists the newest first
+        return result;
+    }
+
+    @Override
+    public List<Model.Commit> branchCommits(PrRef ref, String sha, int max) {
+        List<Model.Commit> result = new ArrayList<>();
+        for (int page = 1; result.size() < max; page++) {
+            JsonNode batch = getJson(projectPath(ref) + "/repository/commits?ref_name=" + sha
+                    + "&per_page=" + Math.min(100, max) + "&page=" + page);
+            batch.forEach(c -> result.add(toCommit(ref, c)));
+            if (batch.size() < Math.min(100, max)) {
+                break;
+            }
+        }
+        return result.size() > max ? result.subList(0, max) : result;
+    }
+
+    @Override
+    public Model.Repository repository(PrRef ref) {
+        JsonNode p = getJson(projectPath(ref));
+        String branch = p.path("default_branch").asText("main");
+        JsonNode head = getJson(projectPath(ref) + "/repository/branches/" + enc(branch)).path("commit");
+        return new Model.Repository(branch, head.path("id").asText(), p.path("web_url").asText(),
+                p.path("description").asText(""), head.path("authored_date").asText(null));
+    }
+
+    @Override
+    public byte[] archive(PrRef ref, String sha) {
+        String path = projectPath(ref) + "/repository/archive.tar.gz?sha=" + sha;
+        HttpResponse<byte[]> res = http.send(request(path).GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+        if (res.statusCode() != 200) {
+            throw new ProviderException(res.statusCode() == 404 ? 404 : 502, "GitLab " + res.statusCode() + " auf " + path);
+        }
+        return res.body();
+    }
+
+    private static JsonNode get(Future<JsonNode> f) {
+        try {
+            return f.get();
+        } catch (ExecutionException e) {
+            throw e.getCause() instanceof ProviderException pe ? pe : new ProviderException(502, String.valueOf(e.getCause()));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ProviderException(503, "Abgebrochen");
+        }
+    }
+
+    private Model.Commit toCommit(PrRef ref, JsonNode c) {
+        String sha = c.path("id").asText();
+        String message = c.path("message").asText(c.path("title").asText(""));
+        List<String> parents = new ArrayList<>();
+        c.path("parent_ids").forEach(p -> parents.add(p.asText()));
+        return new Model.Commit(sha, c.path("title").asText(message.lines().findFirst().orElse("")), message,
+                c.path("author_name").asText(null), null, null, c.path("authored_date").asText(c.path("created_at").asText(null)),
+                c.path("web_url").asText(commitUrl(ref, sha)), parents, 0, 0, List.of());
+    }
+
+    private String commitUrl(PrRef ref, String sha) {
+        return host() + "/" + ref.owner().replace('~', '/') + "/" + ref.repo() + "/-/commit/" + sha;
+    }
+
+    @Override
+    public List<DiffFile> commitDiff(PrRef ref, String sha) {
+        List<DiffFile> files = new ArrayList<>();
+        for (int page = 1; page <= 30; page++) {
+            JsonNode batch = getJson(projectPath(ref) + "/repository/commits/" + sha + "/diff?per_page=100&page=" + page);
+            batch.forEach(d -> files.add(diffFile(d)));
+            if (batch.size() < 100) {
+                break;
+            }
+        }
+        return files;
+    }
+
+    /** GitLab returns blame as consecutive groups of lines, each with its commit. */
+    @Override
+    public Model.Blame blame(PrRef ref, String path, String sha) {
+        JsonNode groups = getJson(projectPath(ref) + "/repository/files/" + enc(path) + "/blame?ref=" + sha);
+        List<Model.BlameRange> ranges = new ArrayList<>();
+        Map<String, Model.Commit> commits = new LinkedHashMap<>();
+        int line = 1;
+        for (JsonNode g : groups) {
+            int count = g.path("lines").size();
+            JsonNode c = g.path("commit");
+            if (count > 0) {
+                ranges.add(new Model.BlameRange(line, line + count - 1, c.path("id").asText()));
+                line += count;
+            }
+            commits.computeIfAbsent(c.path("id").asText(), k -> toCommit(ref, c));
+        }
+        return new Model.Blame(path, sha, ranges, new ArrayList<>(commits.values()));
     }
 
     /** `/diffs` (GitLab 15.7+, paginated), falling back to the older `/changes`. */

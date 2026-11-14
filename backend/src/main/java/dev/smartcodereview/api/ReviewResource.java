@@ -1,7 +1,9 @@
 package dev.smartcodereview.api;
 
 import dev.smartcodereview.ReviewService;
+import dev.smartcodereview.model.Model.Blame;
 import dev.smartcodereview.model.Model.Comment;
+import dev.smartcodereview.model.Model.Commits;
 import dev.smartcodereview.model.Model.MarkRequest;
 import dev.smartcodereview.model.Model.Me;
 import dev.smartcodereview.model.Model.NewComment;
@@ -120,6 +122,25 @@ public class ReviewResource {
     public ReviewState mark(@PathParam("provider") String provider, @PathParam("owner") String owner,
                             @PathParam("repo") String repo, @PathParam("number") int number, MarkRequest request) {
         return service.mark(new PrRef(provider, owner, repo, number), request);
+    }
+
+    /** Commits of the PR (oldest first) and which commit made each changed line. */
+    @GET
+    @Path("/prs/{provider}/{owner}/{repo}/{number}/commits")
+    public Commits commits(@PathParam("provider") String provider, @PathParam("owner") String owner,
+                           @PathParam("repo") String repo, @PathParam("number") int number) {
+        return service.commits(new PrRef(provider, owner, repo, number));
+    }
+
+    /** git blame of a changed file at the PR head. */
+    @GET
+    @Path("/prs/{provider}/{owner}/{repo}/{number}/blame")
+    public Blame blame(@PathParam("provider") String provider, @PathParam("owner") String owner,
+                       @PathParam("repo") String repo, @PathParam("number") int number, @QueryParam("path") String path) {
+        if (path == null || path.isBlank()) {
+            throw new IllegalArgumentException("path fehlt");
+        }
+        return service.blame(new PrRef(provider, owner, repo, number), path);
     }
 
     @GET

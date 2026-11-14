@@ -1,8 +1,9 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { CommitList } from './commit-list';
 import { Icon, SymbolBadge } from './icon';
 import { ReviewStore, Selection, Slot } from './review.store';
 
-type Tab = 'categories' | 'flows' | 'files';
+type Tab = 'categories' | 'flows' | 'files' | 'commits';
 
 interface TreeNode {
   id: string;
@@ -27,7 +28,7 @@ interface TreeNode {
 @Component({
   selector: 'app-review-tree',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, SymbolBadge],
+  imports: [Icon, SymbolBadge, CommitList],
   templateUrl: './review-tree.html',
   styleUrl: './review-tree.scss',
 })
@@ -150,10 +151,15 @@ export class ReviewTree {
 
   /** The visible rows of the active tab (tree flattened, honouring collapsed nodes). */
   protected readonly rows = computed(() => {
-    const roots = this.tab() === 'categories' ? this.categoryTree() : this.tab() === 'flows' ? this.flowTree() : this.fileTree();
+    const tab = this.tab();
+    const roots = tab === 'categories' ? this.categoryTree() : tab === 'flows' ? this.flowTree() : tab === 'files' ? this.fileTree() : [];
     const out: TreeNode[] = [];
+    const filtered = !!this.store.commitFilter();
     const walk = (nodes: TreeNode[]) => {
       for (const n of nodes) {
+        if (filtered && this.store.progressOf(n.slots).total === 0) {
+          continue; // nothing of the selected commit in there
+        }
         out.push(n);
         if (n.children?.length && this.isOpen(n)) {
           walk(n.children);

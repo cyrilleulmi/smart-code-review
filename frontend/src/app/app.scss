@@ -65,6 +65,35 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+
+  /* the selected commit (only its changes are shown) */
+  &.commit {
+    gap: 5px;
+    padding: 0 3px;
+    max-width: 420px;
+    min-width: 0;
+    background: color-mix(in srgb, var(--accent) 18%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+
+    .no {
+      color: var(--fg-muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .sha {
+      font-family: var(--font-code);
+      font-size: 12px;
+      color: var(--accent-fg);
+    }
+
+    .t {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-weight: 400;
+    }
+  }
 }
 
 .avatar-sq {
