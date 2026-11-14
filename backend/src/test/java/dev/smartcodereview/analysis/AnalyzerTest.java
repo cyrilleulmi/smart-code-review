@@ -103,6 +103,26 @@ class AnalyzerTest {
     }
 
     @Test
+    void everyCategoryDescribesItselfAndFlowsKeepTheirOwnView() throws Exception {
+        String service = """
+                export class EventService {
+                  saveEvent(event: Event): Observable<Event> {
+                    return this.http.post<Event>('/api/events', event);
+                  }
+                }
+                """;
+        Snapshot snapshot = new Snapshot(1, "now", info(), List.of(added("src/app/event.service.ts", service)));
+        Analysis analysis = new Analyzer(defaultRules()).analyze(snapshot, Map.of("src/app/event.service.ts", service));
+        assertTrue(!analysis.categories().isEmpty());
+        for (Model.Category c : analysis.categories()) {
+            assertTrue(c.builds() != null && !c.builds().isBlank(), c.id() + " builds");
+            assertTrue(c.divides() != null && !c.divides().isBlank(), c.id() + " divides");
+            assertEquals(c.id().equals("flows") ? "flow" : "groups", c.view(), c.id());
+            assertTrue(c.groups().stream().allMatch(g -> g.id().startsWith(c.id() + "/")), c.id() + " group ids");
+        }
+    }
+
+    @Test
     void extractsTestCases() {
         String spec = """
                 import { PlayerService } from './player.service';

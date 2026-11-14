@@ -234,6 +234,64 @@ export class CodeBlock {
     return !!line.key && this.store.isOkAt(this.segment().path, line.key, this.place());
   }
 
+  /** Half accepted: the line is accepted at another place (or, in the file view, at some of its places) but not here. */
+  protected isHalf(line: DisplayLine): boolean {
+    return !!line.key && line.own && this.store.lineStatus(this.segment().path, line.key, this.place()) === 'partial';
+  }
+
+  /** Where else a half-accepted line is already accepted (only in a place view; the file view has the counter). */
+  protected elsewhere(line: DisplayLine): { ids: string[]; labels: string } | null {
+    if (!this.place() || !this.isHalf(line)) {
+      return null;
+    }
+    const ids = this.store.acceptedElsewhere(this.segment().path, line.key!, this.place());
+    const places = this.store.places();
+    return ids.length ? { ids, labels: ids.map((id) => places.get(id)?.label ?? id).join(', ') } : null;
+  }
+
+  /**
+   * Line index -> hint "already accepted elsewhere". Shown once per run of half-accepted lines with the same other
+   * places (a whole half-accepted block gets one hint, not one per line); the checkbox tooltip still says it per line.
+   */
+  protected readonly halfNotes = computed(() => {
+    const result = new Map<number, { ids: string[]; labels: string }>();
+    const place = this.place();
+    if (!place) {
+      return result;
+    }
+    const seg = this.segment();
+    const places = this.store.places();
+    let previous = '';
+    seg.lines.forEach((line, i) => {
+      if (line.type === 'gap') {
+        previous = '';
+        return;
+      }
+      if (!line.own || !line.key) {
+        return; // context and foreign lines do not break a run
+      }
+      if (this.store.lineStatus(seg.path, line.key, place) !== 'partial') {
+        previous = '';
+        return;
+      }
+      const ids = this.store.acceptedElsewhere(seg.path, line.key, place);
+      const key = ids.join('\0');
+      if (ids.length && key !== previous) {
+        result.set(i, { ids, labels: ids.map((id) => places.get(id)?.label ?? id).join(', ') });
+      }
+      previous = key;
+    });
+    return result;
+  });
+
+  protected goElsewhere(line: DisplayLine, event: Event): void {
+    event.stopPropagation();
+    const first = this.elsewhere(line)?.ids[0];
+    if (first) {
+      this.store.goToPlace(first, this.segment().id);
+    }
+  }
+
   /** "1/2" for lines that need an ok at several places (shown in the file view). */
   protected multi(line: DisplayLine): { ok: number; of: number } | null {
     if (!line.key || !line.own || (this.segment().places?.length ?? 0) < 2) {

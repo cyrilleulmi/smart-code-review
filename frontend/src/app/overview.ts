@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
-import { ownerLabel } from './api';
+import { isFlowView, ownerLabel } from './api';
 import { CommitList } from './commit-list';
 import { ComponentDiagram } from './component-diagram';
 import { Icon } from './icon';
@@ -31,7 +31,7 @@ export class Overview {
         progress: this.store.progressOf(this.store.slotsFor({ kind: 'category', id: c.id })),
         stats: c.id === 'tests' && tests.length
           ? `${tests.length} Testfälle · erreichen ${covered} geänderte Codestellen`
-          : `${c.groups.length} ${c.id === 'flows' ? 'Flows' : 'Gruppen'} · ${new Set(ids).size} Blöcke`,
+          : `${c.groups.length} ${isFlowView(c) ? 'Flows' : 'Gruppen'} · ${new Set(ids).size} Blöcke`,
         enabled: !this.store.disabledCategories().has(c.id),
       };
     }),
@@ -58,7 +58,7 @@ export class Overview {
 
   protected openCategory(id: string): void {
     const cat = this.store.bundle()!.analysis.categories.find((c) => c.id === id);
-    if (id === 'flows' && cat?.groups[0]?.flowId) {
+    if (cat && isFlowView(cat) && cat.groups[0]?.flowId) {
       this.store.select({ kind: 'flow', id: cat.groups[0].flowId });
     } else {
       this.store.select({ kind: 'category', id });

@@ -33,6 +33,7 @@ import dev.smartcodereview.model.Model.Snapshot;
 import dev.smartcodereview.provider.ProviderException;
 import dev.smartcodereview.provider.ReviewProvider;
 import dev.smartcodereview.repo.RepositorySnapshot;
+import dev.smartcodereview.review.LineAcceptance;
 import dev.smartcodereview.store.DataStore;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -362,7 +363,7 @@ public class ReviewService {
     /**
      * Applies marks. A line shown at several places (e.g. in a quick-win group and in two flows) needs an ok at
      * each place: marks with a place go to okAt[place] until all places are ok, then the line moves to ok.
-     * Marks without a place (file view, agents) apply to all places at once.
+     * Marks without a place (file view, agents) apply to all places at once. The rules are in {@link LineAcceptance}.
      */
     public ReviewState mark(PrRef ref, MarkRequest req) {
         synchronized (lock(ref)) {
@@ -378,36 +379,28 @@ public class ReviewService {
             for (LineMark m : req.lines()) {
                 List<String> places = placesByLine.getOrDefault(m.path() + "\u0000" + m.key(), List.of());
                 Set<String> full = ok.computeIfAbsent(m.path(), p -> new TreeSet<>());
-                boolean wasFull = full.contains(m.key());
-                boolean single = m.place() == null || places.size() <= 1 || !places.contains(m.place());
-                if (single) {
-                    if (req.ok()) {
-                        full.add(m.key());
-                    } else {
-                        full.remove(m.key());
+                Set<String> at = new TreeSet<>();
+                okAt.forEach((place, byPath) -> {
+                    if (byPath.getOrDefault(m.path(), Set.of()).contains(m.key())) {
+                        at.add(place);
                     }
-                    places.forEach(p -> removeAt(okAt, p, m.path(), m.key()));
-                    changed += wasFull != req.ok() ? 1 : 0;
-                    continue;
-                }
-                boolean wasAt = wasFull || containsAt(okAt, m.place(), m.path(), m.key());
-                if (wasFull && req.ok()) {
-                    continue; // already ok everywhere
-                }
-                if (wasFull) { // ok everywhere -> ok everywhere except here
-                    full.remove(m.key());
-                    places.stream().filter(p -> !p.equals(m.place()))
-                            .forEach(p -> okAt.computeIfAbsent(p, k -> new TreeMap<>()).computeIfAbsent(m.path(), k -> new TreeSet<>()).add(m.key()));
-                } else if (req.ok()) {
-                    okAt.computeIfAbsent(m.place(), k -> new TreeMap<>()).computeIfAbsent(m.path(), k -> new TreeSet<>()).add(m.key());
-                } else {
-                    removeAt(okAt, m.place(), m.path(), m.key());
-                }
-                if (places.stream().allMatch(p -> containsAt(okAt, p, m.path(), m.key()))) {
+                });
+                LineAcceptance before = new LineAcceptance(full.contains(m.key()), at);
+                LineAcceptance after = before.accept(places, m.place(), req.ok());
+                boolean wasAccepted = before.status(places, m.place()) == LineAcceptance.Status.ACCEPTED;
+                changed += wasAccepted != req.ok() ? 1 : 0;
+                // write back: the line is either ok everywhere or ok at some places (other places' entries stay)
+                if (after.full()) {
                     full.add(m.key());
-                    places.forEach(p -> removeAt(okAt, p, m.path(), m.key()));
+                } else {
+                    full.remove(m.key());
                 }
-                changed += wasAt != req.ok() ? 1 : 0;
+                for (String p : places) {
+                    removeAt(okAt, p, m.path(), m.key());
+                }
+                for (String p : after.at()) {
+                    okAt.computeIfAbsent(p, k -> new TreeMap<>()).computeIfAbsent(m.path(), k -> new TreeSet<>()).add(m.key());
+                }
             }
 
             Map<String, List<String>> out = new TreeMap<>();
@@ -449,10 +442,6 @@ public class ReviewService {
         return result;
     }
 
-    private static boolean containsAt(Map<String, Map<String, Set<String>>> okAt, String place, String path, String key) {
-        return okAt.getOrDefault(place, Map.of()).getOrDefault(path, Set.of()).contains(key);
-    }
-
     private static void removeAt(Map<String, Map<String, Set<String>>> okAt, String place, String path, String key) {
         Map<String, Set<String>> byPath = okAt.get(place);
         if (byPath != null && byPath.containsKey(path)) {
@@ -492,9 +481,13 @@ public class ReviewService {
             }
             for (String key : s.lineKeys()) {
                 total++;
-                boolean everywhere = !places.isEmpty() && places.stream()
-                        .allMatch(p -> st.okAt().getOrDefault(p, Map.of()).getOrDefault(s.path(), List.of()).contains(key));
-                if (marked.contains(key) || everywhere) {
+                Set<String> at = new LinkedHashSet<>();
+                for (String p : places) {
+                    if (st.okAt().getOrDefault(p, Map.of()).getOrDefault(s.path(), List.of()).contains(key)) {
+                        at.add(p);
+                    }
+                }
+                if (new LineAcceptance(marked.contains(key), at).status(places, null) == LineAcceptance.Status.ACCEPTED) {
                     ok++;
                 }
             }

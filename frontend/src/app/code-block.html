@@ -72,9 +72,9 @@
       @if (line.type === 'gap') {
         <div class="gap">⋯ {{ line.text ?? (line.gapSize + ' unveränderte Zeilen') }}</div>
       } @else {
-        @let other = otherCommit(line);
-        <div class="row" [class]="'row t-' + line.type" [class.ok]="line.own && !other && isOk(line)" [class.foreign]="!line.own && line.type !== 'ctx'"
-             [class.other-commit]="other" [class.has-refs]="!!line.refs?.length" [attr.data-new]="line.newLine">
+        @let byOtherCommit = otherCommit(line);
+        <div class="row" [class]="'row t-' + line.type" [class.ok]="line.own && !byOtherCommit && isOk(line)" [class.foreign]="!line.own && line.type !== 'ctx'"
+             [class.other-commit]="byOtherCommit" [class.has-refs]="!!line.refs?.length" [attr.data-new]="line.newLine">
           @if (annotations(); as an) {
             @let a = an[i];
             @if (a) {
@@ -92,11 +92,12 @@
             }
           }
           <span class="g-check">
-            @if (line.own && !other) {
+            @if (line.own && !byOtherCommit) {
               @let m = multi(line);
-              <button type="button" class="check" [class.on]="isOk(line)" [class.part]="!isOk(line) && !place() && !!m && m.ok > 0"
+              @let other = elsewhere(line);
+              <button type="button" class="check" [class.on]="isOk(line)" [class.part]="isHalf(line)"
                       (click)="toggleLine(i, $event)"
-                      [title]="m ? (place() ? 'Hier als ok markieren (' + m.ok + '/' + m.of + ' Orte ok)' : 'An allen ' + m.of + ' Orten als ok markieren (' + m.ok + '/' + m.of + ' ok)') : 'Als ok markieren (Shift-Klick: Bereich)'">
+                      [title]="other ? 'Halb akzeptiert: bereits akzeptiert in ' + other.labels + '. Klick: auch hier akzeptieren' : m ? (place() ? 'Hier als ok markieren (' + m.ok + '/' + m.of + ' Orte ok)' : 'An allen ' + m.of + ' Orten als ok markieren (' + m.ok + '/' + m.of + ' ok)') : 'Als ok markieren (Shift-Klick: Bereich)'">
                 @if (isOk(line)) {
                   <app-icon name="check" [size]="11" />
                 }
@@ -117,6 +118,11 @@
           </span>
           <span class="g-sign">{{ line.type === 'add' ? '+' : line.type === 'del' ? '−' : '' }}</span>
           <span class="src"><code [innerHTML]="html()[i]"></code>
+            @if (halfNotes().get(i); as other) {
+              <button type="button" class="half-note" (click)="goElsewhere(line, $event)" [title]="'Bereits akzeptiert in: ' + other.labels + ' – Klick springt dorthin'">
+                <app-icon name="check" [size]="10" /> {{ other.ids.length === 1 ? 'bereits an anderem Ort akzeptiert' : 'bereits an ' + other.ids.length + ' anderen Orten akzeptiert' }}
+              </button>
+            }
             @for (ref of line.refs ?? []; track ref.segmentId) {
               <button type="button" class="ref" [style.--c]="refColor(ref.segmentId)" (click)="refClick.emit(ref.segmentId)" [title]="'Springe zu ' + ref.symbol">
                 <app-icon name="arrowRight" [size]="11" />

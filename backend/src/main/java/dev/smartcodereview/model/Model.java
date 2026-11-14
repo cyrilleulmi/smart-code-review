@@ -162,8 +162,14 @@ public final class Model {
     public record Group(String id, String label, String description, String flowId, List<String> segmentIds) {
     }
 
+    /**
+     * description: what the category is for. builds / divides: how it is composed and split into groups (shown in the
+     * UI). view: "groups" (list of groups) or an exception with its own UI ("flow"). origin: "builtin" | "rules";
+     * later "external" for categories supplied from outside. The last four are null in analyses of older versions.
+     */
     @RegisterForReflection
-    public record Category(String id, String label, String description, String icon, List<Group> groups) {
+    public record Category(String id, String label, String description, String icon, List<Group> groups,
+                           String builds, String divides, String view, String origin) {
     }
 
     /** depth: distance from the entry point in the call tree; parentSegmentId: the caller (null for entries). */

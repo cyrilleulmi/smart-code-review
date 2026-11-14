@@ -15,7 +15,8 @@ In grober Reihenfolge des Nutzens.
 9. **Review abschliessen** aus dem Tool: Approve / Request changes, optional als gesammelter Review statt Einzelkommentare.
 10. **Laufzeit-Coverage** zusätzlich zur statischen Verknüpfung: `lcov.info` / JaCoCo-XML aus dem CI einlesen und pro Zeile «von Tests ausgeführt» zeigen; Aufrufe über HTTP (`given().put("/api/…")`) über die REST-Pfade (Punkt 2) mit Tests verbinden.
 11. **Fokus-Zustand merken** (ausgeblendete Schritte, Position im Schritt-für-Schritt-Modus) pro PR in `review.json`, damit ein Review über mehrere Sitzungen weitergeht.
-12. Markdown-Rendering für Kommentare und PR-Beschreibung, Light-Theme, Tastaturnavigation (n/p für nächsten Block, o für ok).
+12. **Kategorien von aussen hinzufügen:** Die Kategorien sind Module mit einheitlicher Schnittstelle (`CategoryModule`, siehe [05-analyse.md](05-analyse.md#3e-kategorien-als-module)), `CategoryModules.build` nimmt zusätzliche Module bereits entgegen. Offen: woher sie kommen (Plugin-JAR, Verzeichnis, Prozess), Versionierung der Schnittstelle (`SegmentFacts` wächst nur), Anzeige der Herkunft (`origin = external`), Umgang mit Fehlern in einem fremden Modul (es darf die anderen nicht stören).
+13. Markdown-Rendering für Kommentare und PR-Beschreibung, Light-Theme, Tastaturnavigation (n/p für nächsten Block, o für ok).
 
 ## Bekannte Grenzen
 

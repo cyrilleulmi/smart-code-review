@@ -1,6 +1,10 @@
 package dev.smartcodereview.analysis;
 
 import dev.smartcodereview.analysis.SymbolExtractor.Symbol;
+import dev.smartcodereview.analysis.category.CategoryContext;
+import dev.smartcodereview.analysis.category.CategoryInfo;
+import dev.smartcodereview.analysis.category.CategoryModule;
+import dev.smartcodereview.analysis.category.SegmentFacts;
 import dev.smartcodereview.model.Model;
 import dev.smartcodereview.model.Model.Analysis;
 import dev.smartcodereview.model.Model.ApiOperation;
@@ -79,12 +83,8 @@ public final class Analyzer {
     private static final Pattern DEEP_LAYER = Pattern.compile("(?i)(repository|repo|dao|store|db|database|client|gateway|adapter|lib/|utils?/|helpers?/)");
     private static final Pattern API_LAYER = Pattern.compile("(?i)(resource|controller|endpoint|handler|route|/api/|/rest/|/web/)");
     private static final Pattern DOMAIN_DIR = Pattern.compile("(?i)/(domain|model|models|entity|entities)/");
-    /** Architecture categories (rules.json ids) and the layer they show. */
-    private static final Map<String, String> LAYER_CATEGORIES = Map.of("domain", Structure.DOMAIN, "usecases", Structure.USECASE,
-            "application", Structure.APPLICATION, "adapters", Structure.ADAPTER);
-
     /** Bump when the analysis logic changes, so stored analyses are recomputed. */
-    public static final int VERSION = 13;
+    public static final int VERSION = 14;
 
     /** Asynchronous / framework entry points: shown as the trigger in the title of a flow that starts there. */
     private static final List<Map.Entry<Pattern, String>> TRIGGERS = List.of(
@@ -111,6 +111,7 @@ public final class Analyzer {
     private static final Pattern TABLE_ANNOTATION = Pattern.compile("@Table\\s*\\([^)]*?name\\s*=\\s*\"(?:\\w+\\.)?(\\w+)\"|@Table\\s*\\(\\s*\"(\\w+)\"");
 
     private final Rules rules;
+    private final List<CategoryModule> modules;
 
     /** Identifies rules + analyzer version; stored in analysis.json to detect outdated analyses. */
     public static String fingerprint(Rules rules) {
@@ -119,6 +120,7 @@ public final class Analyzer {
 
     public Analyzer(Rules rules) {
         this.rules = rules;
+        this.modules = CategoryModules.build(rules, List.of());
     }
 
     // ------------------------------------------------------------------ working types
@@ -1187,58 +1189,22 @@ public final class Analyzer {
         return out;
     }
 
+    /** The categories of the PR: every module builds its own groups from the facts about the segments. */
     private List<Category> categories(List<Work> works, List<Flow> flows, Set<String> inFlows) {
+        List<SegmentFacts> facts = works.stream().map(w -> new SegmentFacts(w.id, w.file.path(), w.category, w.group, w.layer,
+                w.aspect == null ? null : w.aspect.category(), w.concerns,
+                Structure.ADAPTER.equals(w.layer) ? Structure.adapterDirection(w.file.path()) : null, inFlows.contains(w.id))).toList();
+        CategoryContext context = new CategoryContext(facts, flows, rules.rules.stream().map(Rules.Rule::group).distinct().toList());
         List<Category> result = new ArrayList<>();
-        for (Rules.CategoryDef def : rules.categories) {
-            List<Group> groups = new ArrayList<>();
-            boolean aspectCategory = rules.aspects.stream().anyMatch(r -> r.category().equals(def.id()));
-            if (def.id().equals("flows")) {
-                for (Flow f : flows) {
-                    groups.add(new Group("flows/" + f.id(), f.title(), f.steps().size() + " Schritte", f.id(),
-                            f.steps().stream().map(FlowStep::segmentId).toList()));
-                }
-            } else {
-                // primary: segments classified into this category by a rule, grouped by the rule's group
-                Map<String, List<String>> byGroup = new LinkedHashMap<>();
-                List<String> groupOrder = rules.rules.stream().map(Rules.Rule::group).distinct().toList();
-                works.stream()
-                        .filter(w -> def.id().equals(w.category) && !(def.id().equals("logic") && inFlows.contains(w.id)))
-                        .sorted(Comparator.comparingInt((Work w) -> groupOrder.indexOf(w.group) < 0 ? 999 : groupOrder.indexOf(w.group))
-                                .thenComparing(w -> w.group))
-                        .forEach(w -> byGroup.computeIfAbsent(w.group, k -> new ArrayList<>()).add(w.id));
-                // extra: architecture layer, frontend aspect or concern - grouped by file; adapters by direction
-                String layer = LAYER_CATEGORIES.get(def.id());
-                if (layer != null || aspectCategory || concernCategory(def.id())) {
-                    works.stream()
-                            .filter(w -> !def.id().equals(w.category) && (layer != null && layer.equals(w.layer)
-                                    || w.aspect != null && w.aspect.category().equals(def.id()) || w.concerns.contains(def.id())))
-                            .sorted(Comparator.comparing((Work w) -> w.file.path()))
-                            .forEach(w -> byGroup.computeIfAbsent(extraGroup(w, layer), k -> new ArrayList<>()).add(w.id));
-                }
-                byGroup.forEach((label, ids) -> groups.add(new Group(def.id() + "/" + slug(label), label, null, null, ids)));
-            }
+        for (CategoryModule module : modules) {
+            List<Group> groups = module.groups(context);
             if (!groups.isEmpty()) {
-                result.add(new Category(def.id(), def.label(), def.description(), def.icon(), groups));
+                CategoryInfo info = module.info();
+                result.add(new Category(info.id(), info.label(), info.summary(), info.icon(), groups,
+                        info.builds(), info.divides(), module.view(), module.origin()));
             }
         }
         return result;
-    }
-
-    private boolean concernCategory(String id) {
-        return rules.concerns.stream().anyMatch(r -> r.category().equals(id));
-    }
-
-    private static String extraGroup(Work w, String layer) {
-        if (Structure.ADAPTER.equals(layer)) {
-            return switch (String.valueOf(Structure.adapterDirection(w.file.path()))) {
-                case "in" -> "Eingehend (REST, Messaging, UI, …)";
-                case "out" -> "Ausgehend (Persistenz, Clients, …)";
-                case "mapping" -> "Mapping (DTO ↔ Modell)";
-                case "config" -> "Konfiguration (Transport, Security)";
-                default -> "Weitere Adapter";
-            };
-        }
-        return w.file.path();
     }
 
     // ------------------------------------------------------------------ components
@@ -1335,9 +1301,5 @@ public final class Analyzer {
             result.add(new ComponentEdge(ab[0], ab[1], n[0], http.get(k)));
         });
         return result;
-    }
-
-    private static String slug(String s) {
-        return s.toLowerCase().replaceAll("[^a-z0-9äöü/._-]+", "-").replaceAll("(^-|-$)", "");
     }
 }

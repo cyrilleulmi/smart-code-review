@@ -26,6 +26,17 @@ import { TestOverview } from './test-overview';
         <app-icon name="check" [size]="14" /> {{ fileView() ? 'Alles überall als ok markieren' : 'Alles als ok markieren' }}
       </button>
     </div>
+    @if (details(); as d) {
+      <details class="cat-details">
+        <summary>Wie entsteht diese Kategorie?</summary>
+        @if (d.builds) {
+          <p><b>Aufbau:</b> {{ d.builds }}</p>
+        }
+        @if (d.divides) {
+          <p><b>Unterteilung:</b> {{ d.divides }}</p>
+        }
+      </details>
+    }
     @if (slots().length === 0) {
       <p class="empty">Keine Änderungen in dieser Auswahl.</p>
     }
@@ -64,6 +75,16 @@ import { TestOverview } from './test-overview';
   styles: `
     .blocks { display: flex; flex-direction: column; gap: 14px; padding-bottom: 40px; }
     .empty { color: var(--fg-muted); }
+    .cat-details {
+      margin: -6px 0 14px 30px;
+      font-size: 12.5px;
+      color: var(--fg-muted);
+      max-width: 90ch;
+    }
+    .cat-details summary { cursor: pointer; color: var(--fg-dim); width: fit-content; }
+    .cat-details summary:hover { color: var(--fg-muted); }
+    .cat-details p { margin: 6px 0 0; line-height: 1.5; }
+    .cat-details b { color: var(--fg); font-weight: 600; }
   `,
 })
 export class GroupView {
@@ -72,6 +93,8 @@ export class GroupView {
 
   readonly title = input.required<string>();
   readonly description = input<string | null>(null);
+  /** How the category is composed and split into groups (the category's self-description). */
+  readonly details = input<{ builds?: string | null; divides?: string | null } | null>(null);
   readonly icon = input('code');
   readonly slots = input.required<Slot[]>();
   readonly scope = input.required<string>();

@@ -43,7 +43,8 @@
 <h2>Vorgeschlagene Review-Reihenfolge</h2>
 <div class="cats">
   @for (c of categories(); track c.id; let i = $index) {
-    <button type="button" class="cat" [class]="'cat c-' + c.id" (click)="openCategory(c.id)">
+    <button type="button" class="cat" [class]="'cat c-' + c.id" (click)="openCategory(c.id)"
+            [title]="[c.builds ? 'Aufbau: ' + c.builds : '', c.divides ? 'Unterteilung: ' + c.divides : ''].filter(x => x).join('\n\n')">
       <span class="idx">{{ i + 1 }}</span>
       <app-icon [name]="c.icon" [size]="20" />
       <span class="body">

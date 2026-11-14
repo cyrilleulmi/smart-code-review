@@ -9,6 +9,10 @@ design decisions are in `docs/` (German).
 - **No AI in the analysis.** Categorisation and flows are pattern-based and deterministic (`backend/.../analysis/`).
   New heuristics go into `default-rules.json` when they can be expressed as rules.
 - **Bump `Analyzer.VERSION`** whenever analysis output changes, so cached `analysis.json` files are recomputed.
+- **Categories are modules.** Each category is a `CategoryModule` (`analysis/category/`) that sees only `SegmentFacts`,
+  never the analyzer or another module, and describes itself (`builds`/`divides`, shown in the UI). New heuristics that
+  fit a rule go into `default-rules.json`; special UIs (like flows) are declared via `view()`, never by category id in the UI.
+  Accept/half-accept rules for lines at several places live only in `review/LineAcceptance` (+ its mirror `acceptance.ts`).
 - **`Model.java` is the file format.** Field names are a contract with agents (see `docs/04-persistenz-und-agenten.md`
   and `backend/src/main/resources/data-dir/AGENTS.md`); extend, don't rename.
 - **Native-friendly backend:** records with `@RegisterForReflection`, Jackson trees for external JSON, new classpath

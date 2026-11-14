@@ -120,7 +120,7 @@
             }
           }
           @default {
-            <app-group-view [title]="c.title!" [description]="c.description ?? null" [icon]="c.icon ?? 'code'"
+            <app-group-view [title]="c.title!" [description]="c.description ?? null" [details]="c.details ?? null" [icon]="c.icon ?? 'code'"
                             [slots]="c.slots!" [scope]="c.scope!" [fileView]="store.selection().kind === 'file'" />
           }
         }
