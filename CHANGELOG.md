@@ -18,6 +18,7 @@ Docker-Images: `culmi/smart-code-review:<version>` und `:latest` (= letztes Rele
 - **Kategorien sind Module** mit einheitlicher Schnittstelle (`CategoryModule`); Hinzufügen oder Entfernen einer Kategorie beeinflusst die anderen nicht. Datenflüsse bleiben als Ausnahme mit eigener Ansicht (`view: "flow"`). Vorbereitet, aber noch nicht umgesetzt: Kategorien von aussen hinzufügen (siehe Roadmap).
 - Die Regeln für Zeilen an mehreren Orten stehen an einer Stelle (`LineAcceptance`) statt doppelt in Backend und UI verstreut. Dateiformat von `review.json` unverändert.
 - `Analyzer.VERSION` 14: Analysen enthalten pro Kategorie `builds`, `divides`, `view`, `origin`; gespeicherte Analysen werden neu berechnet.
+- **Dokumentation für Architekt:innen:** Architektur-Überblick mit Diagrammen, Laufzeitsichten und Architekturentscheiden ([docs/09](docs/09-architektur-ueberblick.md)), alle Funktionen als Anforderungen mit Nachweis ([docs/10](docs/10-anforderungen.md)), belegte Verbesserungsmöglichkeiten ([docs/11](docs/11-verbesserungen.md)) und eine überarbeitete Roadmap ([docs/07](docs/07-roadmap.md)).
 - **Analyse viel schneller bei vielen Segmenten:** Die Import-Prüfung zwischen zwei Dateien wird pro Datei zwischengespeichert statt für jedes Paar von Segmenten neu gerechnet (eigenes Repo als Ganzes: 29 s → 2,5 s, Ergebnis identisch).
 
 ## [0.5.0] – 2026-11-13
