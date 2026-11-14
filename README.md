@@ -93,8 +93,11 @@ cd frontend && npm start              # UI auf :4200, /api wird an :8080 weiterg
 | [docs/04-persistenz-und-agenten.md](docs/04-persistenz-und-agenten.md) | Dateiformat im Datenverzeichnis, Zusammenarbeit mit Agenten |
 | [docs/05-analyse.md](docs/05-analyse.md) | Wie Quick wins und Datenflüsse ohne KI erkannt werden; `rules.json` |
 | [docs/06-test-prs.md](docs/06-test-prs.md) | Die Test-PRs in den anderen Repos und was dabei herauskommen sollte |
-| [docs/07-roadmap.md](docs/07-roadmap.md) | Nächste Schritte |
+| [docs/07-roadmap.md](docs/07-roadmap.md) | Mögliche zukünftige Funktionen, Stand der bisherigen Punkte |
 | [docs/08-versionierung.md](docs/08-versionierung.md) | Versionsschema, Release mit `./release.sh X.Y.Z`, Docker-Tags |
+| [docs/09-architektur-ueberblick.md](docs/09-architektur-ueberblick.md) | **Für Architekt:innen:** Qualitätsziele, Kontext, Bausteine, Laufzeitsichten, Datenlebenszyklus, Querschnitt, Architekturentscheide |
+| [docs/10-anforderungen.md](docs/10-anforderungen.md) | Alle Funktionen als Anforderungen mit Akzeptanzkriterien und Nachweis |
+| [docs/11-verbesserungen.md](docs/11-verbesserungen.md) | Belegte Verbesserungsmöglichkeiten (Tests, Struktur, Sicherheit, Robustheit, Performance, Betrieb) |
 | [CHANGELOG.md](CHANGELOG.md) | Änderungen pro Version |
 
 ## Projektstruktur
@@ -102,6 +105,6 @@ cd frontend && npm start              # UI auf :4200, /api wird an :8080 weiterg
 ```
 backend/    Quarkus 3.40 (Java 25): GitHub-/GitLab-Anbindung, Analyse, Datenablage, REST-API, liefert das UI aus
 frontend/   Angular 22 (standalone, signals, zoneless): UI im IntelliJ-«New UI»-Look
-docs/       Konzept, Annahmen, Architektur, Formate
+docs/       Konzept, Annahmen, Architektur, Formate, Anforderungen, Verbesserungen, Roadmap
 Dockerfile  Native-Build (Node → Mandrel → ubi9-micro)
 ```

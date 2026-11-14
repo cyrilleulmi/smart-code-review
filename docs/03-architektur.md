@@ -1,12 +1,16 @@
 # Architektur
 
+Überblick für Architekt:innen (Qualitätsziele, Laufzeitsichten, Datenlebenszyklus, Entscheide): [09-architektur-ueberblick.md](09-architektur-ueberblick.md). Dieses Dokument ist die Referenz der Bausteine und der REST-API.
+
 ```
- Browser (Angular 22)                    Quarkus 3.40 (JVM-Dev-Mode oder native)                 GitHub
-┌──────────────────────┐  /api/*   ┌──────────────────────────────────────────────┐   REST   ┌──────────┐
-│ PR-Liste  Review-Baum│ ────────▶ │ ReviewResource ─▶ ReviewService              │ ───────▶ │ api.     │
-│ Übersicht Flow-View  │ ◀──────── │                    │  ├─ ReviewProvider ──────┼────────▶ │ github.  │
-│ Code-Blöcke          │   JSON    │                    │  │   └ GitHubProvider    │          │ com      │
-└──────────────────────┘           │                    │  ├─ Analyzer (ohne KI)   │          └──────────┘
+ Browser (Angular 22)                    Quarkus 3.40 (JVM-Dev-Mode oder native)                 Code-Hosts
+┌──────────────────────┐  /api/*   ┌──────────────────────────────────────────────┐   REST   ┌──────────────┐
+│ PR-Liste  Review-Baum│ ────────▶ │ ReviewResource ─▶ ReviewService              │ ───────▶ │ GitHub       │
+│ Übersicht Flow-View  │ ◀──────── │                    │  ├─ ReviewProvider ──────┼────────▶ │ (+ GraphQL   │
+│ Code-Blöcke Commits  │   JSON    │                    │  │   ├ GitHubProvider    │          │  für Blame)  │
+└──────────────────────┘           │                    │  │   └ GitLabProvider ───┼────────▶ │ GitLab       │
+                                   │                    │  ├─ Analyzer (ohne KI)   │          └──────────────┘
+                                   │                    │  ├─ Attribution          │
                                    │                    │  └─ DataStore ───────────┼──▶ ~/.smart-code-review/
                                    └──────────────────────────────────────────────┘     (JSON + Quelltexte)
 ```
