@@ -19,6 +19,7 @@ Es handelt sich um einen PoC. Die folgenden Punkte sind bewusst einfach gehalten
 | A9c | **Ohne GitLab-Token** lassen sich öffentliche MRs lesen (per URL), aber weder auflisten noch kommentieren. Ein GitLab-Self-managed-Server pro Instanz (`SCR_GITLAB_URL`). | Mehrere GitLab-Instanzen gleichzeitig sind nicht vorgesehen. |
 | A9 | **Review-Anfragen an Teams** werden über die GitHub-Suche `review-requested:@me` gefunden – nur direkte Anfragen sind sicher abgedeckt. | Team-Reviews können fehlen. |
 | A10 | Pro Suche **max. 100 PRs**, pro PR **max. 3000 Dateien** (GitHub-Limit), Dateien > 1 MB werden nicht geladen. | Genügt für normale Reviews. |
+| A11 | **Commit-Zuordnung** über die First-Parent-Kette des Heads. Commits aus gemergten Seitenzweigen werden dem Merge-Commit zugeschlagen, Zeilen aus einem hineingemergten Basis-Branch bleiben ohne Commit. Höchstens 250 Commits (GitHub-Limit). | Bei verzweigter Historie sind einzelne Zeilen nicht oder nur dem Merge zugeordnet; der Gesamt-Diff ist davon nicht betroffen. |
 
 ## Analyse
 

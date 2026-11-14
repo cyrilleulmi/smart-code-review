@@ -91,6 +91,49 @@ export interface PullRequestInfo {
   startSha: string | null;
 }
 
+/** A commit (Model.Commit). additions/deletions/files: vs. its first parent (0/empty in blame results). */
+export interface Commit {
+  sha: string;
+  title: string;
+  message: string;
+  author: string | null;
+  authorLogin: string | null;
+  avatarUrl: string | null;
+  date: string | null;
+  url: string | null;
+  parents: string[];
+  additions: number;
+  deletions: number;
+  files: string[];
+}
+
+/** commits.json: the PR's commits (oldest first) and which commit made each changed line. */
+export interface Commits {
+  version: number;
+  headSha: string;
+  generatedAt: string;
+  commits: Commit[];
+  /** path -> line key -> sha */
+  lines: Record<string, Record<string, string>>;
+  /** commit of a merged side branch -> merge commit its changes are attributed to */
+  mergedVia: Record<string, string>;
+  error: string | null;
+}
+
+export interface BlameRange {
+  start: number;
+  end: number;
+  sha: string;
+}
+
+/** git blame of a file at the PR head */
+export interface Blame {
+  path: string;
+  sha: string;
+  ranges: BlameRange[];
+  commits: Commit[];
+}
+
 export interface LineRef {
   segmentId: string;
   symbol: string;
@@ -355,6 +398,14 @@ export class Api {
 
   comments(pr: PrKey): Observable<Comment[]> {
     return this.http.get<Comment[]>(`${base(pr)}/comments`);
+  }
+
+  commits(pr: PrKey): Observable<Commits> {
+    return this.http.get<Commits>(`${base(pr)}/commits`);
+  }
+
+  blame(pr: PrKey, path: string): Observable<Blame> {
+    return this.http.get<Blame>(`${base(pr)}/blame`, { params: { path } });
   }
 
   postComment(pr: PrKey, comment: NewComment): Observable<Comment> {

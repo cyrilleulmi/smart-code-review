@@ -46,6 +46,15 @@ public interface ReviewProvider {
     /** Content of a file at a commit, empty if missing/binary/too large. */
     Optional<String> fileContent(PrRef ref, String path, String sha);
 
+    /** Commits of the PR (any order; each with its parents). Additions/deletions/files may be empty. */
+    List<Model.Commit> commits(PrRef ref);
+
+    /** The files a commit changed compared with its first parent, with parsed hunks. */
+    List<Model.DiffFile> commitDiff(PrRef ref, String sha);
+
+    /** git blame of a file at a commit: who last changed which lines. */
+    Model.Blame blame(PrRef ref, String path, String sha);
+
     List<Comment> comments(PrRef ref);
 
     /** Posts immediately (no pending review). The snapshot provides commit SHAs and old file paths. */

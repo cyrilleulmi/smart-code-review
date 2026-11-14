@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { ownerLabel } from './api';
+import { CommitList } from './commit-list';
 import { ComponentDiagram } from './component-diagram';
 import { Icon } from './icon';
 import { ReviewStore } from './review.store';
@@ -8,7 +9,7 @@ import { ReviewStore } from './review.store';
 @Component({
   selector: 'app-overview',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [Icon, ComponentDiagram],
+  imports: [Icon, ComponentDiagram, CommitList],
   templateUrl: './overview.html',
   styleUrl: './overview.scss',
 })

@@ -16,6 +16,9 @@ reviews/<provider>/<owner>/<repo>/<number>/      provider: github | gitlab; nest
   analysis.json        derived: segments, categories, flows (safe to delete; recomputed)
   review.json          THE ONLY REAL STATE: which changed lines are marked "ok" (per place)
   comments.json        cache of the last comment fetch (GitHub or GitLab)
+  commits.json         derived: the PR's commits (oldest first) and `lines` path -> line key -> commit sha
+                       (added line: commit that last wrote it; deleted line: commit that removed it)
+  blame/<path>.json    cache: git blame of a file at the PR head (`ranges` of new-file lines -> sha)
 ```
 
 ## Line keys
@@ -74,6 +77,9 @@ move it to `ok` and remove it from `okAt`.
 * `GET  /api/resolve?url=<PR or MR web URL>` – turns a GitHub/GitLab URL into provider/owner/repo/number
 * `GET  /api/prs/<provider>/<owner>/<repo>/<number>` – bundle (also creates the files above)
 * `POST …/reanalyse` – recompute analysis.json (e.g. after editing rules.json)
+* `GET  …/commits` – commits.json (computed on first call); to review commit by commit, mark the line keys
+  that `lines` assigns to one sha
+* `GET  …/blame?path=<changed file>` – git blame at the PR head
 * `GET  …/comments`, `POST …/comments` – comments; POST publishes IMMEDIATELY on GitHub/GitLab:
   inline `{"path":"src/a.ts","line":12,"side":"RIGHT","body":"…"}`, reply `{"inReplyTo":123,"body":"…"}`,
   general `{"body":"…"}`. For unchanged context lines also send `oldLine` and `newLine` (GitLab needs both).

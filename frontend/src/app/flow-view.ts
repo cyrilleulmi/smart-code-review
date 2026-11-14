@@ -173,7 +173,8 @@ export class FlowView {
     }
     const hidden = this.hidden();
     const hideDone = this.hideDone();
-    return new Set(nodes.map((n) => n.step.segmentId).filter((id) => !hidden.has(id) && !(hideDone && this.isDone(id))));
+    return new Set(nodes.map((n) => n.step.segmentId)
+      .filter((id) => !hidden.has(id) && !(hideDone && this.isDone(id)) && this.store.inCommitSegment(id)));
   });
 
   protected readonly hiddenCount = computed(() => this.nodes().length - this.visible().size);

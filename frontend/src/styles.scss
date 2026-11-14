@@ -34,6 +34,11 @@
   --del-bg-ok: rgba(212, 98, 98, 0.06);
   --del-fg: #d46c6c;
 
+  /* git blame annotations: older lines fade out, lines of the PR's own commits are marked */
+  --blame-bg: #2a2c31;
+  --blame-recent: #6f8fc7;
+  --blame-pr: #c9a35a;
+
   --file-added: #73bd79;
   --file-modified: #6ca0f0;
 

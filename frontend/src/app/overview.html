@@ -69,6 +69,11 @@
   }
 </div>
 
+<h2>Commits @if (store.commits(); as cs) {<span class="h2-count">{{ cs.commits.length }}</span>}</h2>
+<p class="muted commits-hint">Klick auf einen Commit zeigt in allen Ansichten nur seine Änderungen, Häkchen gelten dann nur für seine Zeilen.
+  Zugeordnet wird jede geänderte Zeile dem Commit, der sie zuletzt geschrieben bzw. entfernt hat.</p>
+<div class="commits-box"><app-commit-list /></div>
+
 <h2>Komponenten</h2>
 <app-component-diagram />
 

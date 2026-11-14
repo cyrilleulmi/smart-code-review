@@ -6,10 +6,14 @@ import dev.smartcodereview.analysis.Analyzer;
 import dev.smartcodereview.analysis.Languages;
 import dev.smartcodereview.analysis.OpenApi;
 import dev.smartcodereview.analysis.Rules;
+import dev.smartcodereview.commits.Attribution;
 import dev.smartcodereview.model.Model;
 import dev.smartcodereview.model.Model.Account;
 import dev.smartcodereview.model.Model.ApiOperation;
 import dev.smartcodereview.model.Model.Analysis;
+import dev.smartcodereview.model.Model.Blame;
+import dev.smartcodereview.model.Model.Commit;
+import dev.smartcodereview.model.Model.Commits;
 import dev.smartcodereview.model.Model.Comment;
 import dev.smartcodereview.model.Model.DiffFile;
 import dev.smartcodereview.model.Model.FileSummary;
@@ -492,6 +496,87 @@ public class ReviewService {
         Snapshot snapshot = store.read(snapshotFile(ref), Snapshot.class)
                 .orElseThrow(() -> new ProviderException(409, "PR zuerst öffnen"));
         return provider(ref.provider()).postComment(ref, snapshot, comment);
+    }
+
+    // ------------------------------------------------------------------ commits & blame
+
+    /**
+     * The PR's commits and which commit made each changed line (commits.json; recomputed when the head or the
+     * attribution algorithm changed). Commit diffs never change, so they are fetched only here. On a provider
+     * error the last result is returned if there is one, else an empty result carrying the error.
+     */
+    public Commits commits(PrRef ref) {
+        Snapshot snapshot = snapshot(ref);
+        Path file = prDirFile(ref, "commits.json");
+        synchronized (locks.computeIfAbsent(ref.key() + "#commits", k -> new Object())) {
+            Optional<Commits> cached = store.read(file, Commits.class);
+            if (cached.filter(c -> c.version() == Attribution.VERSION && c.error() == null
+                    && snapshot.pr().headSha().equals(c.headSha())).isPresent()) {
+                return cached.get();
+            }
+            try {
+                ReviewProvider provider = provider(ref.provider());
+                List<Commit> commits = provider.commits(ref);
+                Map<String, List<DiffFile>> diffs = new ConcurrentHashMap<>();
+                Semaphore limit = new Semaphore(6);
+                try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
+                    List<Future<?>> tasks = new ArrayList<>();
+                    for (Commit c : commits) {
+                        tasks.add(pool.submit(() -> {
+                            limit.acquireUninterruptibly();
+                            try {
+                                diffs.put(c.sha(), provider.commitDiff(ref, c.sha()));
+                            } finally {
+                                limit.release();
+                            }
+                        }));
+                    }
+                    for (Future<?> t : tasks) {
+                        try {
+                            t.get();
+                        } catch (Exception e) {
+                            Log.warnf("Commit diff of %s not available: %s", ref.key(), e.getMessage());
+                        }
+                    }
+                }
+                long t0 = System.currentTimeMillis();
+                Attribution.Result r = Attribution.compute(snapshot, commits, diffs);
+                Log.infof("Attributed %s to %d commits in %d ms", ref.key(), commits.size(), System.currentTimeMillis() - t0);
+                Commits result = new Commits(Attribution.VERSION, snapshot.pr().headSha(), Instant.now().toString(),
+                        r.ordered(), r.lines(), r.mergedVia(), null);
+                store.write(file, result);
+                return result;
+            } catch (ProviderException e) {
+                Log.warnf("Commits of %s not available: %s", ref.key(), e.getMessage());
+                return cached.orElseGet(() -> new Commits(Attribution.VERSION, snapshot.pr().headSha(), Instant.now().toString(),
+                        List.of(), Map.of(), Map.of(), e.getMessage()));
+            }
+        }
+    }
+
+    /** git blame of a changed file at the PR head; cached under blame/<path>.json. */
+    public Blame blame(PrRef ref, String path) {
+        Snapshot snapshot = snapshot(ref);
+        DiffFile f = snapshot.files().stream().filter(x -> x.path().equals(path)).findFirst()
+                .orElseThrow(() -> new ProviderException(404, "Datei ist nicht Teil des Pull Requests: " + path));
+        String sha = snapshot.pr().headSha();
+        if ("removed".equals(f.status())) {
+            return new Blame(path, sha, List.of(), List.of());
+        }
+        Path file = DataStore.resolveInside(store.prDir(ref).resolve("blame"), path + ".json");
+        Optional<Blame> cached = store.read(file, Blame.class).filter(b -> sha.equals(b.sha()));
+        if (cached.isPresent()) {
+            return cached.get();
+        }
+        Blame blame = provider(ref.provider()).blame(ref, path, sha);
+        store.write(file, blame);
+        return blame;
+    }
+
+    private Snapshot snapshot(PrRef ref) {
+        synchronized (lock(ref)) {
+            return store.read(snapshotFile(ref), Snapshot.class).orElseGet(() -> fetch(ref));
+        }
     }
 
     // ------------------------------------------------------------------ rules & files

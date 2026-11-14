@@ -1,9 +1,25 @@
 import { ChangeDetectionStrategy, Component, computed, effect, inject, input, output, signal, untracked } from '@angular/core';
-import { Comment, DisplayLine, LineMark, Segment } from './api';
+import { Blame, Comment, Commit, DisplayLine, LineMark, Segment } from './api';
 import { highlightLines } from './highlight';
 import { Icon, SymbolBadge } from './icon';
 import { areaColor, areaLabel, areaOfSegment, langColor, langLabel } from './look';
 import { ReviewStore } from './review.store';
+
+/** git blame of one display line (IntelliJ "Annotate"). */
+interface Annotation {
+  sha: string;
+  /** first line of a run of lines from the same commit: shows the text */
+  first: boolean;
+  /** 0 = oldest, 1 = newest commit shown in the block (shade) */
+  age: number;
+  /** position of a PR commit (1 = oldest), null for older history */
+  no: number | null;
+  /** deleted line: the commit that removed it */
+  removed: boolean;
+  text: string;
+  title: string;
+  url: string | null;
+}
 
 interface Thread {
   root: Comment;
@@ -22,6 +38,7 @@ interface Thread {
   styleUrl: './code-block.scss',
   host: {
     '[class.done]': 'allOk()',
+    '[class.annotated]': 'store.annotate()',
     '[class.fe]': 'area() === "frontend"',
     '[attr.data-segment]': 'segment().id',
     '[style.--area]': 'areaColor(area())',
@@ -109,6 +126,13 @@ export class CodeBlock {
   });
 
   constructor() {
+    // blame of the file, once annotations are switched on
+    effect(() => {
+      if (this.store.annotate()) {
+        const path = this.segment().path;
+        untracked(() => this.store.ensureBlame(path));
+      }
+    });
     // "collapse all" / "expand all" of the surrounding view
     effect(() => {
       const cmd = this.store.collapseCommand();
@@ -116,6 +140,81 @@ export class CodeBlock {
         untracked(() => this.userCollapsed.set(cmd.collapsed));
       }
     });
+  }
+
+  /**
+   * Blame per display line: added lines belong to the PR commit that wrote them, deleted lines to the one that
+   * removed them, context lines to whoever changed them last (blame at the PR head).
+   */
+  protected readonly annotations = computed<(Annotation | null)[] | null>(() => {
+    if (!this.store.annotate()) {
+      return null;
+    }
+    const seg = this.segment();
+    const entry = this.store.blames().get(seg.path);
+    const blame: Blame | null = entry && entry !== 'loading' ? entry : null;
+    const known = new Map<string, Commit>(blame?.commits.map((c) => [c.sha, c]) ?? []);
+    const pr = this.store.commitBySha();
+    const no = this.store.commitNo();
+    const shas = seg.lines.map((line) => {
+      if (line.type === 'gap') return null;
+      const own = line.key ? this.store.commitOfLine(seg.path, line.key) : undefined;
+      if (line.type !== 'ctx' || own) return own ?? null;
+      return blame && line.newLine != null ? blameAt(blame, line.newLine) : null;
+    });
+    const commitOf = (sha: string) => pr.get(sha) ?? known.get(sha) ?? null;
+    const times = shas.filter((x): x is string => !!x).map((sha) => time(commitOf(sha)?.date)).filter((t) => t > 0);
+    const [min, max] = [Math.min(...times), Math.max(...times)];
+    // all on one day (a fresh branch): the time tells more than the date
+    const oneDay = times.length > 0 && day(min) === day(max);
+    let previous: string | null = null;
+    return shas.map((sha, i) => {
+      const line = seg.lines[i];
+      if (!sha) {
+        previous = null;
+        return null;
+      }
+      const c = commitOf(sha);
+      const removed = line.type === 'del';
+      const first = sha + removed !== previous;
+      previous = sha + removed;
+      const n = no.get(sha) ?? null;
+      const date = !c?.date ? '' : oneDay
+        ? new Date(c.date).toLocaleTimeString('de-CH', { hour: '2-digit', minute: '2-digit' })
+        : new Date(c.date).toLocaleDateString('de-CH', { day: '2-digit', month: '2-digit', year: '2-digit' });
+      const t = time(c?.date);
+      return {
+        sha, first, removed, no: n, url: c?.url ?? null,
+        age: max > min && t > 0 ? (t - min) / (max - min) : 1,
+        text: `${date} ${shortAuthor(c)}`.trim() || sha.substring(0, 7),
+        title: [
+          `${sha.substring(0, 10)}${n ? ` · Commit ${n} dieses ${this.store.provider().noun}` : ''}`,
+          `${c?.author ?? c?.authorLogin ?? '?'} · ${c?.date ? new Date(c.date).toLocaleString('de-CH') : ''}`,
+          removed ? 'Diese Zeile wurde in diesem Commit entfernt.' : '',
+          '',
+          c?.message?.trim() ?? '',
+          '',
+          n ? 'Klick: nur diesen Commit zeigen' : 'Klick: Commit öffnen',
+        ].filter((x, j) => x !== '' || j === 3 || j === 5).join('\n'),
+      };
+    });
+  });
+
+  protected readonly blameLoading = computed(() => this.store.annotate() && this.store.blames().get(this.segment().path) === 'loading');
+
+  protected openAnnotation(a: Annotation, event: Event): void {
+    event.stopPropagation();
+    if (a.no != null) {
+      this.store.setCommitFilter(this.store.commitFilter() === a.sha ? null : a.sha);
+    } else if (a.url) {
+      window.open(a.url, '_blank', 'noopener');
+    }
+  }
+
+  /** In commit view: a change made by another commit (dimmed, cannot be marked here). */
+  protected otherCommit(line: DisplayLine): boolean {
+    return !!this.store.commitFilter() && (line.type === 'add' || line.type === 'del') && !!line.key
+      && !this.store.inCommit(this.segment().path, line.key);
   }
 
   /** Inline review comments of this file, grouped into threads by line key. */
@@ -167,7 +266,7 @@ export class CodeBlock {
   protected toggleLine(index: number, event: MouseEvent): void {
     const lines = this.segment().lines;
     const line = lines[index];
-    if (!line.own || !line.key) {
+    if (!line.own || !line.key || this.otherCommit(line)) {
       return;
     }
     const target = !this.isOk(line);
@@ -175,7 +274,7 @@ export class CodeBlock {
     let marks: LineMark[] = [{ path: this.segment().path, key: line.key, place }];
     if (event.shiftKey && this.lastClicked != null) {
       const [from, to] = [Math.min(this.lastClicked, index), Math.max(this.lastClicked, index)];
-      marks = lines.slice(from, to + 1).filter((l) => l.own && l.key).map((l) => ({ path: this.segment().path, key: l.key!, place }));
+      marks = lines.slice(from, to + 1).filter((l) => l.own && l.key && !this.otherCommit(l)).map((l) => ({ path: this.segment().path, key: l.key!, place }));
     }
     this.lastClicked = index;
     this.store.mark(marks, target, marks.length > 1 ? `range:${this.segment().id}` : 'line');
@@ -244,6 +343,35 @@ export class CodeBlock {
   protected time(iso: string): string {
     return new Date(iso).toLocaleString('de-CH', { dateStyle: 'short', timeStyle: 'short' });
   }
+}
+
+/** sha of the blame range containing a line of the new file */
+function blameAt(blame: Blame, line: number): string | null {
+  let lo = 0;
+  let hi = blame.ranges.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const r = blame.ranges[mid];
+    if (line < r.start) hi = mid - 1;
+    else if (line > r.end) lo = mid + 1;
+    else return r.sha;
+  }
+  return null;
+}
+
+function day(t: number): string {
+  return new Date(t).toDateString();
+}
+
+function time(iso: string | null | undefined): number {
+  return iso ? Date.parse(iso) || 0 : 0;
+}
+
+/** "Cyrille Ulmi" -> "Cyrille U." */
+function shortAuthor(c: Commit | null): string {
+  const name = (c?.author ?? c?.authorLogin ?? '').trim();
+  const parts = name.split(/\s+/);
+  return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1].charAt(0)}.` : name;
 }
 
 function shortName(s: Segment): string {

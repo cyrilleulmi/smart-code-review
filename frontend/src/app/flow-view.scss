@@ -221,6 +221,12 @@
     border-style: dashed;
   }
 
+  /* not changed by the selected commit: kept for the structure of the flow, code hidden */
+  &.other-commit {
+    opacity: 0.3;
+    border-style: dotted;
+  }
+
   &.current {
     border-color: var(--accent);
     box-shadow: 0 0 0 2px rgba(53, 116, 240, 0.35);

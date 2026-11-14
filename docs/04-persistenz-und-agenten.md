@@ -23,7 +23,9 @@ Alles, was SmartCodeReview lokal weiss, liegt als **lesbare Dateien** in einem V
         ├── structure.json    Ordner des Repos am PR-Stand (für die Architektur-Erkennung, Cache)
         ├── analysis.json     Segmente, Kategorien, Flüsse, Komponenten (abgeleitet, jederzeit neu berechenbar)
         ├── review.json       ◀ DEINE MARKIERUNGEN (die einzige Datei mit «echtem» Zustand)
-        └── comments.json     Letzter Abruf der GitHub-Kommentare (Cache)
+        ├── comments.json     Letzter Abruf der GitHub-Kommentare (Cache)
+        ├── commits.json      Commits des PRs und welcher Commit welche Zeile geändert hat (abgeleitet, Cache)
+        └── blame/<pfad>.json Git-Blame einer Datei am PR-Stand (Cache, beim Annotieren geholt)
 ```
 
 Alle Dateien sind UTF-8, eingerückt und werden **atomar** geschrieben (temporäre Datei + Move). Das Backend liest sie **bei jedem Request neu**; das UI holt den Status neu, sobald das Browserfenster den Fokus bekommt.
@@ -54,6 +56,23 @@ Alle Dateien sind UTF-8, eingerückt und werden **atomar** geschrieben (temporä
 * `ok` ist pro Datei eine sortierte Liste der Zeilen, die **überall** ok sind. Was weder hier noch in `okAt` steht, ist nicht ok.
 * `okAt` (Ort → Datei → Zeilen) hält Zeilen, die erst an **einem Teil** ihrer Orte ok sind. Die Orte einer Zeile stehen in `analysis.json` → `segments[].places`. Sobald eine Zeile an allen Orten ok ist, wandert sie nach `ok`. Zeilen mit nur einem Ort stehen immer direkt in `ok`.
 * `log` ist ein Protokoll (max. 500 Einträge), damit nachvollziehbar ist, wer was markiert hat. `by` ist `ui` oder `agent:<name>`.
+
+## `commits.json`
+
+```json
+{
+  "version": 1,
+  "headSha": "b4461ff2…",
+  "commits": [{ "sha": "76ce6d0d…", "title": "Flow connectors: one lane per connection", "author": "Cyrille",
+                "date": "2026-11-13T16:18:00Z", "parents": ["69f7bd1f…"], "additions": 68, "deletions": 22, "files": ["…"] }],
+  "lines": { "frontend/src/app/flow-view.ts": { "N186": "76ce6d0d…", "O116": "69f7bd1f…" } },
+  "mergedVia": { "<sha eines Commits aus einem gemergten Seitenzweig>": "<sha des Merge-Commits>" }
+}
+```
+
+* `commits` stehen in Reihenfolge, die ältesten zuerst.
+* `lines` ordnet die Zeilenschlüssel des PR-Diffs (dieselben wie in `lineKeys`) einem Commit zu. Hinzugefügte Zeilen gehören zum Commit, der sie zuletzt geschrieben hat, gelöschte Zeilen zu dem, der sie entfernt hat. Zeilen ohne sichere Zuordnung fehlen.
+* Wird neu berechnet, wenn sich `headSha` oder der Algorithmus (`version`) ändert. Die Datei ist abgeleitet und kann gelöscht werden.
 
 ## `analysis.json` (Auszug)
 
