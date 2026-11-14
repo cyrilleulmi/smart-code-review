@@ -21,7 +21,8 @@ public final class Model {
     /**
      * Identifies a pull/merge request across providers. owner is the GitHub owner or the GitLab namespace;
      * nested GitLab groups are written with "~" instead of "/" (group~subgroup) so the ref fits in a URL
-     * path and a directory name.
+     * path and a directory name. number 0 = the whole repository at the head of its default branch, reviewed
+     * like a pull request in which every file is new.
      */
     @RegisterForReflection
     public record PrRef(String provider, String owner, String repo, int number) {
@@ -81,6 +82,11 @@ public final class Model {
     /** The frozen state of a PR as fetched from the provider. New commits are out of scope (see docs). */
     @RegisterForReflection
     public record Snapshot(int schemaVersion, String fetchedAt, PullRequestInfo pr, List<DiffFile> files) {
+    }
+
+    /** A repository's default branch and its newest commit (to review the whole repository). */
+    @RegisterForReflection
+    public record Repository(String defaultBranch, String headSha, String url, String description, String headDate) {
     }
 
     // ---------------------------------------------------------------- commits

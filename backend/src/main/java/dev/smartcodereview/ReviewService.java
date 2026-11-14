@@ -32,6 +32,7 @@ import dev.smartcodereview.model.Model.Segment;
 import dev.smartcodereview.model.Model.Snapshot;
 import dev.smartcodereview.provider.ProviderException;
 import dev.smartcodereview.provider.ReviewProvider;
+import dev.smartcodereview.repo.RepositorySnapshot;
 import dev.smartcodereview.store.DataStore;
 import io.quarkus.logging.Log;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -240,6 +241,9 @@ public class ReviewService {
     }
 
     private Snapshot fetch(PrRef ref) {
+        if (ref.number() == 0) {
+            return fetchRepository(ref);
+        }
         Snapshot snapshot = provider(ref.provider()).fetchSnapshot(ref);
         try {
             Files.deleteIfExists(prDirFile(ref, "structure.json")); // re-read for the new head
@@ -251,6 +255,28 @@ public class ReviewService {
         store.write(snapshotFile(ref), snapshot);
         Log.infof("Fetched %s: %d files, %d sources", ref.key(), snapshot.files().size(), wanted.size());
         return snapshot;
+    }
+
+    /**
+     * The whole repository at the head of its default branch, as a PR in which every file is new. One archive
+     * download; the directories and API contracts come from it too (structure.json).
+     */
+    private Snapshot fetchRepository(PrRef ref) {
+        ReviewProvider provider = provider(ref.provider());
+        Model.Repository repo = provider.repository(ref);
+        long t0 = System.currentTimeMillis();
+        byte[] archive = provider.archive(ref, repo.headSha());
+        RepositorySnapshot.Result r = RepositorySnapshot.build(ref, repo, ref.owner().replace('~', '/'), archive);
+        Path sourcesDir = store.sourcesDir(ref);
+        List<DiffFile> wanted = wantedSources(r.snapshot(), rules());
+        for (DiffFile f : wanted) {
+            store.writeText(DataStore.resolveInside(sourcesDir, f.path()), r.sources().get(f.path()));
+        }
+        store.write(prDirFile(ref, "structure.json"), r.structure());
+        store.write(snapshotFile(ref), r.snapshot());
+        Log.infof("Fetched repository %s @ %s in %d ms: %d files, %d analysed", ref.key(), repo.headSha(),
+                System.currentTimeMillis() - t0, r.snapshot().files().size(), wanted.size());
+        return r.snapshot();
     }
 
     /** Files whose new version is needed to find functions: code files without a path rule, or with `symbols: true`. */
@@ -479,6 +505,9 @@ public class ReviewService {
     // ------------------------------------------------------------------ comments
 
     public List<Comment> comments(PrRef ref) {
+        if (ref.number() == 0) {
+            return List.of(); // a repository has no review comments
+        }
         try {
             List<Comment> comments = provider(ref.provider()).comments(ref);
             store.write(prDirFile(ref, "comments.json"), comments);
@@ -490,6 +519,9 @@ public class ReviewService {
     }
 
     public Comment postComment(PrRef ref, NewComment comment) {
+        if (ref.number() == 0) {
+            throw new ProviderException(400, "Beim ganzen Repository gibt es keinen Pull Request, an den Kommentare gehen könnten");
+        }
         if (comment.body() == null || comment.body().isBlank()) {
             throw new ProviderException(400, "Kommentar ist leer");
         }
@@ -516,7 +548,10 @@ public class ReviewService {
             }
             try {
                 ReviewProvider provider = provider(ref.provider());
-                List<Commit> commits = provider.commits(ref);
+                // whole repository: the newest commits of the branch (older lines stay without commit; blame shows them)
+                List<Commit> commits = ref.number() == 0
+                        ? provider.branchCommits(ref, snapshot.pr().headSha(), REPOSITORY_COMMITS)
+                        : provider.commits(ref);
                 Map<String, List<DiffFile>> diffs = new ConcurrentHashMap<>();
                 Semaphore limit = new Semaphore(6);
                 try (ExecutorService pool = Executors.newVirtualThreadPerTaskExecutor()) {
@@ -553,6 +588,9 @@ public class ReviewService {
             }
         }
     }
+
+    /** Commits of the branch looked at in a whole-repository review. */
+    static final int REPOSITORY_COMMITS = 50;
 
     /** git blame of a changed file at the PR head; cached under blame/<path>.json. */
     public Blame blame(PrRef ref, String path) {

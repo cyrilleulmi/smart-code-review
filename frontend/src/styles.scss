@@ -194,6 +194,11 @@ textarea:focus-visible {
     border-color: var(--ok);
     color: #10210f;
   }
+  &.small {
+    height: 22px;
+    padding: 0 8px;
+    font-size: 11.5px;
+  }
 }
 
 .view-head {

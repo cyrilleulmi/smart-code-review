@@ -10,7 +10,8 @@ AGENTS.md              this file (rewritten on every app start)
 rules.default.json     built-in classification rules (rewritten on start; reference only)
 rules.json             OPTIONAL custom rules; takes precedence; edits trigger re-analysis
 settings.json          switched-off categories {"disabledCategories": [...]}: hidden, their places need no ok
-reviews/<provider>/<owner>/<repo>/<number>/      provider: github | gitlab; nested GitLab groups: group~sub
+reviews/<provider>/<owner>/<repo>/<number>/      provider: github | gitlab; nested GitLab groups: group~sub;
+                                                   number 0 = the whole repository (every file counts as new)
   snapshot.json        PR metadata + parsed diff (frozen when the PR was first opened)
   sources/<path>       new version of each analysed file
   analysis.json        derived: segments, categories, flows (safe to delete; recomputed)

@@ -45,6 +45,9 @@ public class GitHubProvider implements ReviewProvider {
 
     private static final int MAX_FILE_BYTES = 1_000_000;
     private static final Pattern PR_URL = Pattern.compile("^https?://github\\.com/([^/]+)/([^/]+)/pull/(\\d+).*$");
+    /** github.com/owner/repo, optionally .git, /tree/<branch>, query or fragment */
+    private static final Pattern REPO_URL =
+            Pattern.compile("^https?://github\\.com/([^/]+)/([^/?#]+?)(?:\\.git)?(?:/tree/[^?#]*)?/?(?:[?#].*)?$");
 
     @Inject
     ObjectMapper mapper;
@@ -94,7 +97,11 @@ public class GitHubProvider implements ReviewProvider {
     @Override
     public Optional<PrRef> parseUrl(String url) {
         Matcher m = PR_URL.matcher(url.trim());
-        return m.matches() ? Optional.of(new PrRef(id(), m.group(1), m.group(2), Integer.parseInt(m.group(3)))) : Optional.empty();
+        if (m.matches()) {
+            return Optional.of(new PrRef(id(), m.group(1), m.group(2), Integer.parseInt(m.group(3))));
+        }
+        Matcher r = REPO_URL.matcher(url.trim());
+        return r.matches() ? Optional.of(new PrRef(id(), r.group(1), r.group(2), 0)) : Optional.empty();
     }
 
     @Override
@@ -176,20 +183,56 @@ public class GitHubProvider implements ReviewProvider {
         List<Model.Commit> result = new ArrayList<>();
         for (int page = 1; page <= 3; page++) { // GitHub lists at most 250 commits of a PR
             JsonNode batch = getJson(base + page);
-            for (JsonNode c : batch) {
-                String message = c.path("commit").path("message").asText("");
-                List<String> parents = new ArrayList<>();
-                c.path("parents").forEach(p -> parents.add(p.path("sha").asText()));
-                result.add(new Model.Commit(c.path("sha").asText(), firstLine(message), message,
-                        c.path("commit").path("author").path("name").asText(null), c.path("author").path("login").asText(null),
-                        c.path("author").path("avatar_url").asText(null), c.path("commit").path("author").path("date").asText(null),
-                        c.path("html_url").asText(null), parents, 0, 0, List.of()));
-            }
+            batch.forEach(c -> result.add(toCommit(c)));
             if (batch.size() < 100) {
                 break;
             }
         }
         return result;
+    }
+
+    @Override
+    public List<Model.Commit> branchCommits(PrRef ref, String sha, int max) {
+        List<Model.Commit> result = new ArrayList<>();
+        for (int page = 1; result.size() < max; page++) {
+            JsonNode batch = getJson("/repos/" + ref.owner() + "/" + ref.repo() + "/commits?sha=" + sha
+                    + "&per_page=" + Math.min(100, max) + "&page=" + page);
+            batch.forEach(c -> result.add(toCommit(c)));
+            if (batch.size() < Math.min(100, max)) {
+                break;
+            }
+        }
+        return result.size() > max ? result.subList(0, max) : result;
+    }
+
+    private static Model.Commit toCommit(JsonNode c) {
+        String message = c.path("commit").path("message").asText("");
+        List<String> parents = new ArrayList<>();
+        c.path("parents").forEach(p -> parents.add(p.path("sha").asText()));
+        return new Model.Commit(c.path("sha").asText(), firstLine(message), message,
+                c.path("commit").path("author").path("name").asText(null), c.path("author").path("login").asText(null),
+                c.path("author").path("avatar_url").asText(null), c.path("commit").path("author").path("date").asText(null),
+                c.path("html_url").asText(null), parents, 0, 0, List.of());
+    }
+
+    @Override
+    public Model.Repository repository(PrRef ref) {
+        String base = "/repos/" + ref.owner() + "/" + ref.repo();
+        JsonNode r = getJson(base);
+        String branch = r.path("default_branch").asText("main");
+        JsonNode head = getJson(base + "/commits/" + branch);
+        return new Model.Repository(branch, head.path("sha").asText(), r.path("html_url").asText(),
+                r.path("description").asText(""), head.path("commit").path("author").path("date").asText(null));
+    }
+
+    @Override
+    public byte[] archive(PrRef ref, String sha) {
+        String path = "/repos/" + ref.owner() + "/" + ref.repo() + "/tarball/" + sha;
+        HttpResponse<byte[]> res = http.send(request(path).GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+        if (res.statusCode() != 200) {
+            throw new ProviderException(res.statusCode() == 404 ? 404 : 502, "GitHub " + res.statusCode() + " auf " + path);
+        }
+        return res.body();
     }
 
     @Override

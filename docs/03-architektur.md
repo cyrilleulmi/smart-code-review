@@ -28,6 +28,7 @@
 | `analysis/Rules` | Lädt und wertet `rules.json` aus (Pfad-Globs, Zeilenmuster, Symbolarten). |
 | `analysis/Analyzer` | Segmente bilden → klassifizieren → Aufrufkanten finden → Flüsse bauen (einer pro Einstiegspunkt) → Orte pro Segment → Tests mit dem erreichten Code verknüpfen → Anzeigezeilen rendern. |
 | `commits/Attribution` | Ordnet jede geänderte Zeile des PR-Diffs dem Commit zu, der sie gemacht hat: spielt die Commit-Diffs entlang der First-Parent-Kette nach (siehe [05-analyse.md](05-analyse.md#7-commits)). Ohne Git, ohne KI. |
+| `repo/RepositorySnapshot` | Ganzes Repository als «Pull Request», in dem jede Datei neu ist: liest das `.tar.gz` eines Commits (ein Request), baut pro Textdatei einen Hunk aus hinzugefügten Zeilen, dazu Ordner und API-Verträge (`structure.json`). |
 | `store/DataStore` | Datenverzeichnis, atomare JSON-Schreibvorgänge, Pfad-Sicherheit. |
 | `ReviewService` | Orchestriert alles; Snapshot und Analyse werden gecacht, die Analyse wird bei geänderten Regeln oder neuer Analyzer-Version neu berechnet. Markierungen pro Ort (`okAt`) werden zu «überall ok» (`ok`) zusammengeführt, sobald alle Orte einer Zeile ok sind. |
 | `api/ReviewResource` | REST-API (unten). |
@@ -37,13 +38,13 @@
 
 ## REST-API
 
-Alle PR-Endpunkte unter `/api/prs/{provider}/{owner}/{repo}/{number}`; `provider` ist `github` oder `gitlab`, verschachtelte GitLab-Gruppen stehen als `gruppe~untergruppe` in `owner`.
+Alle PR-Endpunkte unter `/api/prs/{provider}/{owner}/{repo}/{number}`; `provider` ist `github` oder `gitlab`, verschachtelte GitLab-Gruppen stehen als `gruppe~untergruppe` in `owner`. `number` **0** ist das ganze Repository am Stand des Default-Branches (siehe [05-analyse.md](05-analyse.md#8-ganzes-repository)); dort liefern `…/comments` eine leere Liste und Kommentieren ist nicht möglich, `…/commits` nimmt die letzten 50 Commits des Branches.
 
 | Methode | Pfad | Zweck |
 |---|---|---|
 | GET / PUT | `/api/settings` | Ausgeschaltete Kategorien `{"disabledCategories":["fe-templates"]}` (global, `<data>/settings.json`) |
 | GET | `/api/me` | Konten pro Provider (User oder Grund, warum keiner), Datenverzeichnis |
-| GET | `/api/resolve?url=…` | PR-/MR-URL von GitHub oder GitLab → `{provider, owner, repo, number}` |
+| GET | `/api/resolve?url=…` | PR-/MR-URL von GitHub oder GitLab → `{provider, owner, repo, number}`; Repository-URL → `number` 0 |
 | GET | `/api/prs?filter=all\|authored\|review-requested` | Offene PRs (mit lokalem Fortschritt, falls vorhanden) |
 | GET | `/api/local` | PRs mit lokalen Daten (offline) |
 | GET | `…/{number}` | **Bundle**: PR-Infos, Dateien, Analyse, Review-Status. Lädt den Snapshot beim ersten Mal von GitHub. |

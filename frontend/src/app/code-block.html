@@ -109,7 +109,7 @@
           <span class="g-num">{{ line.oldLine ?? '' }}</span>
           <span class="g-num">{{ line.newLine ?? '' }}</span>
           <span class="g-act">
-            @if (line.inDiff && line.key) {
+            @if (line.inDiff && line.key && !store.isRepo()) {
               <button type="button" class="add-comment" (click)="openEditor(line)" [title]="'Kommentar auf ' + store.provider().label">
                 <app-icon name="comment" [size]="12" />
               </button>

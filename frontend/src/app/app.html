@@ -7,7 +7,10 @@
       {{ b.pr.repo }}
     </button>
     <span class="widget branch" [title]="b.pr.headRef + ' → ' + b.pr.baseRef">
-      <app-icon name="branch" [size]="14" /> {{ b.pr.headRef }} <span class="dim">→ {{ b.pr.baseRef }}</span>
+      <app-icon name="branch" [size]="14" /> {{ b.pr.headRef }}
+      @if (b.pr.baseRef) {
+        <span class="dim">→ {{ b.pr.baseRef }}</span>
+      }
     </span>
     @if (store.activeCommit(); as ac) {
       <span class="widget commit" [title]="ac.message">
@@ -20,12 +23,23 @@
         <button type="button" class="tb-btn small" (click)="store.setCommitFilter(null)" title="Alle Commits zeigen"><app-icon name="close" [size]="12" /></button>
       </span>
     }
-    <span class="pr-title" [title]="b.pr.title">{{ store.provider().sigil }}{{ b.pr.number }} {{ b.pr.title }}</span>
+    @if (store.isRepo()) {
+      <span class="pr-title" title="Das ganze Repository am Stand des Default-Branches, analysiert wie ein Pull Request, in dem jede Datei neu ist">
+        Ganzes Repository @ {{ b.pr.headSha.substring(0, 7) }}</span>
+    } @else {
+      <span class="pr-title" [title]="b.pr.title">{{ store.provider().sigil }}{{ b.pr.number }} {{ b.pr.title }}</span>
+    }
   } @else {
     <span class="widget project"><span class="avatar-sq">S</span> SmartCodeReview</span>
   }
   <span class="spacer"></span>
   @if (b) {
+    @if (!store.isRepo()) {
+      <button type="button" class="tb-btn" (click)="store.openRepository()"
+              title="Ganzes Repository analysieren: alle Dateien des Default-Branches wie einen Pull Request reviewen">
+        <app-icon name="folder" />
+      </button>
+    }
     <button type="button" class="tb-btn" [class.on]="store.annotate()" (click)="store.toggleAnnotate()"
             title="Annotieren mit Git Blame: Commit, Autor und Datum jeder Zeile">
       <app-icon name="annotate" />
@@ -41,7 +55,7 @@
       <app-icon name="refresh" />
     </button>
     <a class="tb-btn" [href]="b.pr.url" target="_blank" rel="noopener" [title]="'Auf ' + store.provider().label + ' öffnen'"><app-icon name="external" /></a>
-    <button type="button" class="tb-btn" (click)="store.close()" title="Pull Request schliessen"><app-icon name="close" /></button>
+    <button type="button" class="tb-btn" (click)="store.close()" [title]="store.provider().noun + ' schliessen'"><app-icon name="close" /></button>
   } @else {
     <button type="button" class="tb-btn" (click)="store.loadPrs()" title="Pull Requests neu laden"><app-icon name="refresh" /></button>
   }

@@ -96,8 +96,14 @@ export class ReviewStore {
     return pr ? { provider: pr.provider, owner: pr.owner, repo: pr.repo, number: pr.number } : null;
   });
 
+  /** The whole repository is open (number 0): every file counts as new, there are no review comments. */
+  readonly isRepo = computed(() => this.bundle()?.pr.number === 0);
+
   /** Label, sigil (#/!) and noun of the open PR's code host. */
-  readonly provider = computed(() => providerInfo(this.bundle()?.pr.provider));
+  readonly provider = computed(() => {
+    const info = providerInfo(this.bundle()?.pr.provider);
+    return this.isRepo() ? { ...info, sigil: '', noun: 'Repository' } : info;
+  });
 
   readonly segments = computed(() => {
     const map = new Map<string, Segment>();
@@ -277,6 +283,14 @@ export class ReviewStore {
         this.error.set(errorMessage(e));
       },
     });
+  }
+
+  /** Analyses the whole repository of the open PR (its default branch) like a pull request. */
+  openRepository(): void {
+    const key = this.prKey();
+    if (key) {
+      this.open({ ...key, number: 0 });
+    }
   }
 
   /** Opens a PR/MR by its web URL (GitHub or GitLab, also ones not in the list). */

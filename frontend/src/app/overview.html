@@ -4,22 +4,35 @@
   <div class="meta">
     <app-icon [name]="p.provider" [size]="14" />
     <span class="repo">{{ ownerLabel(p.owner) }}/{{ p.repo }}</span>
-    <span class="num">{{ store.provider().sigil }}{{ p.number }}</span>
+    @if (store.isRepo()) {
+      <span class="tag">Ganzes Repository</span>
+    } @else {
+      <span class="num">{{ store.provider().sigil }}{{ p.number }}</span>
+    }
     @if (p.draft) {
       <span class="tag">Draft</span>
     }
   </div>
   <h1>{{ p.title }}</h1>
   <div class="sub">
-    <span><app-icon name="branch" [size]="13" /> {{ p.headRef }} → {{ p.baseRef }}</span>
-    <span>von <b>{{ p.author }}</b></span>
-    <span class="add">+{{ p.additions }}</span><span class="del">−{{ p.deletions }}</span>
-    <span>{{ p.changedFiles }} Dateien</span>
-    <span>{{ inlineCount() }} Inline-Kommentare</span>
+    @if (store.isRepo()) {
+      <span><app-icon name="branch" [size]="13" /> {{ p.headRef }} @ {{ p.headSha.substring(0, 7) }}</span>
+      <span>{{ p.additions }} Zeilen</span>
+      <span>{{ p.changedFiles }} Dateien</span>
+    } @else {
+      <span><app-icon name="branch" [size]="13" /> {{ p.headRef }} → {{ p.baseRef }}</span>
+      <span>von <b>{{ p.author }}</b></span>
+      <span class="add">+{{ p.additions }}</span><span class="del">−{{ p.deletions }}</span>
+      <span>{{ p.changedFiles }} Dateien</span>
+      <span>{{ inlineCount() }} Inline-Kommentare</span>
+      <button type="button" class="btn small" (click)="store.openRepository()"
+              title="Alle Dateien des Default-Branches wie einen Pull Request analysieren">
+        <app-icon name="folder" [size]="13" /> Ganzes Repository analysieren</button>
+    }
   </div>
   <div class="total">
     <div class="bar"><div class="fill" [style.width.%]="percent(total)"></div></div>
-    <span><b>{{ percent(total) }}%</b> · {{ total.ok }} von {{ total.total }} geänderten Zeilen als ok markiert</span>
+    <span><b>{{ percent(total) }}%</b> · {{ total.ok }} von {{ total.total }} {{ store.isRepo() ? 'Zeilen' : 'geänderten Zeilen' }} als ok markiert</span>
     @if (multiPlaced()) {
       <span class="multi" title="Diese Blöcke erscheinen in mehreren Kategorien oder Flows und brauchen an jedem Ort ein eigenes Ok">
         <app-icon name="layers" [size]="12" /> {{ multiPlaced() }} Blöcke an mehreren Orten</span>
@@ -71,7 +84,11 @@
 
 <h2>Commits @if (store.commits(); as cs) {<span class="h2-count">{{ cs.commits.length }}</span>}</h2>
 <p class="muted commits-hint">Klick auf einen Commit zeigt in allen Ansichten nur seine Änderungen, Häkchen gelten dann nur für seine Zeilen.
-  Zugeordnet wird jede geänderte Zeile dem Commit, der sie zuletzt geschrieben bzw. entfernt hat.</p>
+  @if (store.isRepo()) {
+    Hier sind es die letzten 50 Commits des Branches; jede Zeile gehört zum Commit, der sie zuletzt geschrieben hat. Ältere Zeilen haben keinen Commit, die Blame-Spalte zeigt sie trotzdem.
+  } @else {
+    Zugeordnet wird jede geänderte Zeile dem Commit, der sie zuletzt geschrieben bzw. entfernt hat.
+  }</p>
 <div class="commits-box"><app-commit-list /></div>
 
 <h2>Komponenten</h2>
@@ -82,6 +99,7 @@
     <h2>Beschreibung</h2>
     <div class="desc-box">{{ p.body || 'Keine Beschreibung.' }}</div>
   </section>
+  @if (!store.isRepo()) {
   <section>
     <h2>Allgemeine Kommentare</h2>
     @for (c of generalComments(); track c.id) {
@@ -111,4 +129,5 @@
       </ul>
     }
   </section>
+  }
 </div>

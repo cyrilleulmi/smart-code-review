@@ -46,9 +46,10 @@ export function ownerLabel(owner: string): string {
   return owner.replaceAll('~', '/');
 }
 
-/** e.g. "cyrilleulmi/spongecoach#13" or "gitlab-org/cli!4347" */
+/** e.g. "cyrilleulmi/spongecoach#13" or "gitlab-org/cli!4347"; number 0 = the whole repository */
 export function prLabel(pr: { provider: string; owner: string; repo: string; number: number }): string {
-  return `${ownerLabel(pr.owner)}/${pr.repo}${providerInfo(pr.provider).sigil}${pr.number}`;
+  const repo = `${ownerLabel(pr.owner)}/${pr.repo}`;
+  return pr.number === 0 ? `${repo} (Repository)` : `${repo}${providerInfo(pr.provider).sigil}${pr.number}`;
 }
 
 export type PrRole = 'authored' | 'review-requested';

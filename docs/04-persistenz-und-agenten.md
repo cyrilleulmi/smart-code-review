@@ -17,7 +17,7 @@ Alles, was SmartCodeReview lokal weiss, liegt als **lesbare Dateien** in einem V
 ├── rules.json                OPTIONAL: eigene Regeln; hat Vorrang. Änderungen werden automatisch übernommen.
 ├── settings.json             Ausgeschaltete Kategorien {"disabledCategories": [...]} (vom UI geschrieben)
 └── reviews/
-    └── <github|gitlab>/<owner>/<repo>/<number>/      (GitLab-Gruppen: gruppe~untergruppe)
+    └── <github|gitlab>/<owner>/<repo>/<number>/      (GitLab-Gruppen: gruppe~untergruppe; Nummer 0 = ganzes Repository)
         ├── snapshot.json     PR-Metadaten + Diff (eingefroren)
         ├── sources/<pfad>    Quelltext der neuen Version (nur analysierte Dateien)
         ├── structure.json    Ordner des Repos am PR-Stand (für die Architektur-Erkennung, Cache)

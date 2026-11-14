@@ -9,7 +9,11 @@ Docker-Images: `culmi/smart-code-review:<version>` und `:latest` (= letztes Rele
 ### Neu
 - **Commits:** Die Commits des PR/MR stehen im Review-Fenster (Tab *Commits*) und auf der Übersicht, mit Fortschritt pro Commit. Jede geänderte Zeile ist dem Commit zugeordnet, der sie zuletzt geschrieben bzw. entfernt hat (`commits.json`, API `GET …/commits`).
 - **Nur einen Commit ansehen:** Ein Klick auf einen Commit filtert alle Ansichten (Kategorien, Flows, Dateien, Übersicht) auf seine Änderungen. Änderungen anderer Commits sind im Code abgeblendet, Häkchen, «Block ok» und Fortschritt beziehen sich nur auf die Zeilen des Commits. In der Toolbar geht es mit ← → von Commit zu Commit; der Commit steht auch in der URL.
+- **Ganzes Repository analysieren:** Repository-URL ins Suchfeld oder Ordner-Knopf in der Toolbar eines PRs: Alle Dateien des Default-Branches werden wie ein Pull Request analysiert, in dem jede Datei neu ist (Kategorien, Flows, Komponenten, Tests, Commit-Filter, Blame). Geladen wird ein einziges Archiv; Commits sind die letzten 50 des Branches. API: Nummer `0`, z. B. `GET /api/prs/github/owner/repo/0`.
 - **Annotieren mit Git Blame:** Toolbar-Knopf blendet in allen Code-Blöcken eine Blame-Spalte ein (wie in IntelliJ): Datum bzw. Uhrzeit, Autor, Nummer des PR-Commits, ältere Zeilen blasser. Gelöschte Zeilen zeigen den Commit, der sie entfernt hat. Klick filtert auf den Commit. GitHub über GraphQL, GitLab über die Blame-API; Cache unter `blame/` (API `GET …/blame?path=…`).
+
+### Geändert
+- **Analyse viel schneller bei vielen Segmenten:** Die Import-Prüfung zwischen zwei Dateien wird pro Datei zwischengespeichert statt für jedes Paar von Segmenten neu gerechnet (eigenes Repo als Ganzes: 29 s → 2,5 s, Ergebnis identisch).
 
 ## [0.5.0] – 2026-11-13
 

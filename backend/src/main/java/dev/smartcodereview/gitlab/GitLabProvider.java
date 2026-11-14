@@ -109,10 +109,17 @@ public class GitLabProvider implements ReviewProvider {
 
     @Override
     public Optional<PrRef> parseUrl(String url) {
-        Matcher m = Pattern.compile("^" + Pattern.quote(baseUrl) + "/(.+)/([^/]+)/-/merge_requests/(\\d+).*$").matcher(url.trim());
-        return m.matches()
-                ? Optional.of(new PrRef(id(), m.group(1).replace('/', '~'), m.group(2), Integer.parseInt(m.group(3))))
-                : Optional.empty();
+        String u = url.trim();
+        Matcher m = Pattern.compile("^" + Pattern.quote(baseUrl) + "/(.+)/([^/]+)/-/merge_requests/(\\d+).*$").matcher(u);
+        if (m.matches()) {
+            return Optional.of(new PrRef(id(), m.group(1).replace('/', '~'), m.group(2), Integer.parseInt(m.group(3))));
+        }
+        // project URL (whole repository): group[/sub]/project, optionally .git or /-/tree/<branch>
+        Matcher r = Pattern.compile("^" + Pattern.quote(baseUrl) + "/([^?#]+?)/([^/?#]+?)(?:\\.git)?(?:/-/tree/[^?#]*)?/?(?:[?#].*)?$").matcher(u);
+        if (r.matches() && !r.group(1).contains("/-") && !r.group(1).startsWith("-") && !r.group(2).equals("-")) {
+            return Optional.of(new PrRef(id(), r.group(1).replace('/', '~'), r.group(2), 0));
+        }
+        return Optional.empty();
     }
 
     @Override
@@ -221,6 +228,39 @@ public class GitLabProvider implements ReviewProvider {
         }
         Collections.reverse(result); // GitLab lists the newest first
         return result;
+    }
+
+    @Override
+    public List<Model.Commit> branchCommits(PrRef ref, String sha, int max) {
+        List<Model.Commit> result = new ArrayList<>();
+        for (int page = 1; result.size() < max; page++) {
+            JsonNode batch = getJson(projectPath(ref) + "/repository/commits?ref_name=" + sha
+                    + "&per_page=" + Math.min(100, max) + "&page=" + page);
+            batch.forEach(c -> result.add(toCommit(ref, c)));
+            if (batch.size() < Math.min(100, max)) {
+                break;
+            }
+        }
+        return result.size() > max ? result.subList(0, max) : result;
+    }
+
+    @Override
+    public Model.Repository repository(PrRef ref) {
+        JsonNode p = getJson(projectPath(ref));
+        String branch = p.path("default_branch").asText("main");
+        JsonNode head = getJson(projectPath(ref) + "/repository/branches/" + enc(branch)).path("commit");
+        return new Model.Repository(branch, head.path("id").asText(), p.path("web_url").asText(),
+                p.path("description").asText(""), head.path("authored_date").asText(null));
+    }
+
+    @Override
+    public byte[] archive(PrRef ref, String sha) {
+        String path = projectPath(ref) + "/repository/archive.tar.gz?sha=" + sha;
+        HttpResponse<byte[]> res = http.send(request(path).GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+        if (res.statusCode() != 200) {
+            throw new ProviderException(res.statusCode() == 404 ? 404 : 502, "GitLab " + res.statusCode() + " auf " + path);
+        }
+        return res.body();
     }
 
     private static JsonNode get(Future<JsonNode> f) {

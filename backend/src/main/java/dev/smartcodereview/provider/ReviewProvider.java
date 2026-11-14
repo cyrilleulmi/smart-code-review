@@ -34,8 +34,17 @@ public interface ReviewProvider {
     /** Open PRs authored by the user or waiting for the user's review. */
     List<PullRequestSummary> openPullRequests();
 
-    /** Recognises a PR web URL of this host. */
+    /** Recognises a PR web URL of this host, or a repository URL (number 0 = the whole repository). */
     Optional<PrRef> parseUrl(String url);
+
+    /** Default branch and its head commit. */
+    Model.Repository repository(PrRef ref);
+
+    /** The repository at a commit as a .tar.gz archive (one request instead of one per file). */
+    byte[] archive(PrRef ref, String sha);
+
+    /** The newest commits reachable from sha (newest first), at most max. */
+    List<Model.Commit> branchCommits(PrRef ref, String sha, int max);
 
     /** Fetches PR metadata and the full diff. */
     Snapshot fetchSnapshot(PrRef ref);

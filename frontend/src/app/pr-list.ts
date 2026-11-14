@@ -18,7 +18,7 @@ import { PrFilter, ReviewStore } from './review.store';
     </div>
     <div class="search">
       <app-icon name="search" [size]="13" />
-      <input type="search" placeholder="Filtern oder PR-/MR-URL einfügen + Enter" [value]="query()"
+      <input type="search" placeholder="Filtern, PR-/MR- oder Repo-URL + Enter" [value]="query()"
              (input)="query.set($any($event.target).value)" (keydown.enter)="enter()" />
     </div>
     @if (isUrl()) {
@@ -37,7 +37,8 @@ import { PrFilter, ReviewStore } from './review.store';
             <span class="title">{{ pr.title }}</span>
           </span>
           <span class="line2">
-            <span class="repo" [title]="owner(pr) + '/' + pr.repo">{{ pr.repo }}</span> {{ info(pr).sigil }}{{ pr.number }} · {{ pr.author }}
+            <span class="repo" [title]="owner(pr) + '/' + pr.repo">{{ pr.repo }}</span>
+            {{ pr.number === 0 ? 'ganzes Repository' : info(pr).sigil + pr.number }} · {{ pr.author }}
             @for (r of pr.roles; track r) {
               <span class="role" [class]="'role r-' + r">{{ r === 'authored' ? 'von mir' : 'Review' }}</span>
             }
