@@ -13,7 +13,11 @@ import java.util.regex.Pattern;
 /** Pattern-based classification rules (see resources/rules/default-rules.json). */
 public final class Rules {
 
-    public record CategoryDef(String id, String label, String description, String icon) {
+    /**
+     * builds / divides: optional hand-written explanation of how the category is composed and split into groups;
+     * when empty the category module derives it from the rules.
+     */
+    public record CategoryDef(String id, String label, String description, String icon, String builds, String divides) {
     }
 
     /**
@@ -69,7 +73,8 @@ public final class Rules {
         List<CategoryDef> categories = new ArrayList<>();
         for (JsonNode c : root.path("categories")) {
             categories.add(new CategoryDef(c.path("id").asText(), c.path("label").asText(),
-                    c.path("description").asText(""), c.path("icon").asText("code")));
+                    c.path("description").asText(""), c.path("icon").asText("code"),
+                    c.path("builds").asText(""), c.path("divides").asText("")));
         }
         return new Rules(categories, rules(root.path("rules")), rules(root.path("aspects")), rules(root.path("concerns")), hash);
     }

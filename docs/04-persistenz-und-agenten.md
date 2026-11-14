@@ -52,7 +52,7 @@ Alle Dateien sind UTF-8, eingerückt und werden **atomar** geschrieben (temporä
 
 * **Zeilenschlüssel:** `N<zeile>` = Zeile in der **neuen** Datei (hinzugefügt), `O<zeile>` = Zeile in der **alten** Datei (gelöscht). Nur geänderte Zeilen zählen.
 * `ok` ist pro Datei eine sortierte Liste der Zeilen, die **überall** ok sind. Was weder hier noch in `okAt` steht, ist nicht ok.
-* `okAt` (Ort → Datei → Zeilen) hält Zeilen, die erst an **einem Teil** ihrer Orte ok sind. Die Orte einer Zeile stehen in `analysis.json` → `segments[].places`. Sobald eine Zeile an allen Orten ok ist, wandert sie nach `ok`. Zeilen mit nur einem Ort stehen immer direkt in `ok`.
+* `okAt` (Ort → Datei → Zeilen) hält Zeilen, die erst an **einem Teil** ihrer Orte ok sind. Die Orte einer Zeile stehen in `analysis.json` → `segments[].places`. Sobald eine Zeile an allen Orten ok ist, wandert sie nach `ok`. Zeilen mit nur einem Ort stehen immer direkt in `ok`. Eine Zeile, die in `okAt` steht, zeigt das UI an ihren übrigen Orten als «halb akzeptiert» (abgeleitet, nicht gespeichert).
 * `log` ist ein Protokoll (max. 500 Einträge), damit nachvollziehbar ist, wer was markiert hat. `by` ist `ui` oder `agent:<name>`.
 
 ## `analysis.json` (Auszug)

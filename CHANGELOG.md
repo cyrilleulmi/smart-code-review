@@ -6,6 +6,15 @@ Docker-Images: `culmi/smart-code-review:<version>` und `:latest` (= letztes Rele
 
 ## [Unreleased]
 
+### Neu
+- **Halb akzeptiert:** Eine Zeile, die an mehreren Orten vorkommt (mehrere Kategorien, Flows) und an einem Ort akzeptiert wurde, erscheint an den anderen Orten als «halb akzeptiert»: halbes Häkchen, Hinweis «bereits an anderem Ort akzeptiert» (Klick springt dorthin, Tooltip nennt die Orte). Mehrere akzeptierte Orte werden einzeln geführt; das Zurücknehmen an einem Ort lässt die anderen stehen. Halb akzeptiert zählt im Fortschritt noch nicht.
+- **Beschreibung jeder Kategorie:** Unter dem Titel («Wie entsteht diese Kategorie?») und als Tooltip in der Übersicht steht, wie die Kategorie aufgebaut ist und wie sie in Gruppen unterteilt wird. Aus den Regeln abgeleitet, in `rules.json` pro Kategorie mit `builds` / `divides` überschreibbar.
+
+### Geändert
+- **Kategorien sind Module** mit einheitlicher Schnittstelle (`CategoryModule`); Hinzufügen oder Entfernen einer Kategorie beeinflusst die anderen nicht. Datenflüsse bleiben als Ausnahme mit eigener Ansicht (`view: "flow"`). Vorbereitet, aber noch nicht umgesetzt: Kategorien von aussen hinzufügen (siehe Roadmap).
+- Die Regeln für Zeilen an mehreren Orten stehen an einer Stelle (`LineAcceptance`) statt doppelt in Backend und UI verstreut. Dateiformat von `review.json` unverändert.
+- `Analyzer.VERSION` 14: Analysen enthalten pro Kategorie `builds`, `divides`, `view`, `origin`; gespeicherte Analysen werden neu berechnet.
+
 ## [0.5.0] – 2026-11-13
 
 ### Neu

@@ -16,6 +16,7 @@ import {
   prLabel,
   providerInfo,
 } from './api';
+import { AcceptStatus, Acceptance, accept, acceptedElsewhere, acceptedIn, statusOf } from './acceptance';
 
 export type Selection =
   | { kind: 'overview' }
@@ -369,27 +370,37 @@ export class ReviewStore {
 
   // ------------------------------------------------------------- marks
 
+  /** The stored accept state of a line ("path\0key"). */
+  private acceptanceOf(k: string, places: readonly string[]): Acceptance {
+    return { full: this.ok().has(k), at: new Set(places.filter((p) => this.okAt().get(p)?.has(k))) };
+  }
+
+  /**
+   * Status of the line at this place: accepted, 'partial' (= half accepted: accepted at another place, not here)
+   * or open. place null: overall - accepted when accepted at all its places.
+   */
+  lineStatus(path: string, key: string, place: string | null): AcceptStatus {
+    const k = path + SEP + key;
+    return statusOf(this.acceptanceOf(k, this.linePlaces().get(k) ?? []), this.linePlaces().get(k) ?? [], place);
+  }
+
+  /** The other places (group ids) at which the line is already accepted. */
+  acceptedElsewhere(path: string, key: string, place: string | null): string[] {
+    const k = path + SEP + key;
+    const places = this.linePlaces().get(k) ?? [];
+    return acceptedElsewhere(this.acceptanceOf(k, places), places, place);
+  }
+
   /** Is the line ok at this place? place null: ok at all its places. */
   isOkAt(path: string, key: string, place: string | null): boolean {
-    const k = path + SEP + key;
-    if (this.ok().has(k)) {
-      return true;
-    }
-    const places = this.linePlaces().get(k) ?? [];
-    if (place == null || !places.includes(place)) {
-      return places.length > 1 && places.every((p) => this.okAt().get(p)?.has(k));
-    }
-    return places.length > 1 && !!this.okAt().get(place)?.has(k);
+    return this.lineStatus(path, key, place) === 'accepted';
   }
 
   /** How many of the line's places are ok (for lines shown at several places). */
   okCount(path: string, key: string): { ok: number; of: number } {
     const k = path + SEP + key;
     const places = this.linePlaces().get(k) ?? [];
-    if (this.ok().has(k)) {
-      return { ok: places.length, of: places.length };
-    }
-    return { ok: places.filter((p) => this.okAt().get(p)?.has(k)).length, of: places.length };
+    return { ok: acceptedIn(this.acceptanceOf(k, places), places).length, of: places.length };
   }
 
   /** Lines of the slots; every slot (segment at a place) counts on its own. */
@@ -451,26 +462,13 @@ export class ReviewStore {
     for (const l of lines) {
       const k = l.path + SEP + l.key;
       const places = this.linePlaces().get(k) ?? [];
-      if (l.place == null || places.length <= 1 || !places.includes(l.place)) {
-        ok ? full.add(k) : full.delete(k);
-        places.forEach((p) => at.get(p)?.delete(k));
-        continue;
-      }
-      if (full.has(k) && ok) {
-        continue;
-      }
-      if (full.has(k)) {
-        full.delete(k);
-        places.filter((p) => p !== l.place).forEach((p) => atSet(p).add(k));
-      } else if (ok) {
-        atSet(l.place).add(k);
-      } else {
-        at.get(l.place)?.delete(k);
-      }
-      if (places.every((p) => at.get(p)?.has(k))) {
+      const next = accept({ full: full.has(k), at: new Set(places.filter((p) => at.get(p)?.has(k))) }, places, l.place, ok);
+      full.delete(k);
+      places.forEach((p) => at.get(p)?.delete(k));
+      if (next.full) {
         full.add(k);
-        places.forEach((p) => at.get(p)?.delete(k));
       }
+      next.at.forEach((p) => atSet(p).add(k));
     }
     this.ok.set(full);
     this.okAt.set(at);

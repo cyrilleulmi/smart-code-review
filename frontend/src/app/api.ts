@@ -140,12 +140,25 @@ export interface Group {
   segmentIds: string[];
 }
 
+/** Categories with their own UI (data flows) say so in `view`; older analyses only have the id to go by. */
+export function isFlowView(c: { id: string; view?: string | null }): boolean {
+  return (c.view ?? (c.id === 'flows' ? 'flow' : 'groups')) === 'flow';
+}
+
 export interface Category {
   id: string;
   label: string;
+  /** what the category is for */
   description: string;
   icon: string;
   groups: Group[];
+  /** how the category is composed / split into groups (absent in analyses of older versions) */
+  builds?: string | null;
+  divides?: string | null;
+  /** 'groups' = list of groups; other values are exceptions with their own UI ('flow') */
+  view?: string | null;
+  /** 'builtin' | 'rules' (| later 'external') */
+  origin?: string | null;
 }
 
 export interface FlowStep {

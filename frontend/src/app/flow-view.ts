@@ -364,6 +364,8 @@ export class FlowView {
     const host = this.cards().nativeElement;
     const box = host.getBoundingClientRect();
     const scroll = host.scrollLeft;
+    // screen px -> layout px (1 unless the page is scaled, e.g. a zoomed-out preview)
+    const k = host.offsetWidth > 0 && box.width > 0 ? host.offsetWidth / box.width : 1;
     const items: { edge: FlowEdge; c: number; fromX: number; toX: number; y1: number; y2: number; lane: number }[] = [];
     for (const [i, edge] of this.flow().edges.entries()) {
       const fromEl = host.querySelector<HTMLElement>(`app-code-block[data-segment="${edge.from}"]`);
@@ -377,10 +379,10 @@ export class FlowView {
       items.push({
         edge,
         c: edgeColorIndex(i),
-        fromX: fromEl.getBoundingClientRect().left - box.left + scroll,
-        toX: toEl.getBoundingClientRect().left - box.left + scroll,
-        y1: fromRect.top - box.top + fromRect.height / 2,
-        y2: toHead.top - box.top + toHead.height / 2,
+        fromX: (fromEl.getBoundingClientRect().left - box.left) * k + scroll,
+        toX: (toEl.getBoundingClientRect().left - box.left) * k + scroll,
+        y1: (fromRect.top - box.top + fromRect.height / 2) * k,
+        y2: (toHead.top - box.top + toHead.height / 2) * k,
         lane: 0,
       });
     }

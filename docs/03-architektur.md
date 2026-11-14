@@ -26,9 +26,10 @@
 | `analysis/Structure` | Ports-&-Adapters-Erkennung aus den Ordnern, Schicht einer Datei, Frontend-Erkennung, Komponenten-Schlüssel. |
 | `analysis/Http` | REST quer durch den Stack: HTTP-Aufrufe im Client-Code, Endpunkte im Server-Code, Vergleich der Pfade. |
 | `analysis/Rules` | Lädt und wertet `rules.json` aus (Pfad-Globs, Zeilenmuster, Symbolarten). |
-| `analysis/Analyzer` | Segmente bilden → klassifizieren → Aufrufkanten finden → Flüsse bauen (einer pro Einstiegspunkt) → Orte pro Segment → Tests mit dem erreichten Code verknüpfen → Anzeigezeilen rendern. |
+| `analysis/Analyzer` | Segmente bilden → klassifizieren → Aufrufkanten finden → Flüsse bauen (einer pro Einstiegspunkt) → Kategorien bauen lassen (Module, s. u.) → Orte pro Segment → Tests mit dem erreichten Code verknüpfen → Anzeigezeilen rendern. |
+| `analysis/category/*`, `analysis/CategoryModules` | **Kategorien als Module:** jede Kategorie ist ein `CategoryModule` mit gleicher Schnittstelle (`info()` = Selbstbeschreibung, `groups(context)` = ihre Gruppen, `view()`, `origin()`). Ein Modul sieht nur `SegmentFacts`, nie den Analyzer und nie ein anderes Modul. `CategoryModules` erzeugt die Module aus den Kategorien der Regeldatei. Details in [05-analyse.md](05-analyse.md#3e-kategorien-als-module). |
 | `store/DataStore` | Datenverzeichnis, atomare JSON-Schreibvorgänge, Pfad-Sicherheit. |
-| `ReviewService` | Orchestriert alles; Snapshot und Analyse werden gecacht, die Analyse wird bei geänderten Regeln oder neuer Analyzer-Version neu berechnet. Markierungen pro Ort (`okAt`) werden zu «überall ok» (`ok`) zusammengeführt, sobald alle Orte einer Zeile ok sind. |
+| `ReviewService` | Orchestriert alles; Snapshot und Analyse werden gecacht, die Analyse wird bei geänderten Regeln oder neuer Analyzer-Version neu berechnet. Markierungen pro Ort (`okAt`) werden zu «überall ok» (`ok`) zusammengeführt, sobald alle Orte einer Zeile ok sind; die Regeln dafür (auch für «halb akzeptiert») stehen in `review/LineAcceptance`. |
 | `api/ReviewResource` | REST-API (unten). |
 | `model/Model` | Alle Datentypen als Records. Sie sind zugleich das JSON-Format der Dateien und der API. |
 
@@ -68,6 +69,7 @@ Angular 22, standalone Komponenten, Signals, zoneless, `OnPush`.
 | `overview.*` | PR-Übersicht: Fortschritt, vorgeschlagene Reihenfolge, Beschreibung, allgemeine Kommentare, letzte Markierungen. |
 | `group-view.ts` | Liste von Code-Blöcken (Kategorie, Gruppe, Datei) mit Fokus-Leiste (einzeln durchgehen, alle ein-/ausklappen). |
 | `flow-view.*` | Aufrufbaum-Diagramm (SVG) + Code-Blöcke in Aufrufreihenfolge, eingerückt nach Tiefe, mit Verbindungslinien von der Aufrufzeile zum aufgerufenen Block. Schritte aus-/einblenden, Fokus auf einen Zweig, Erledigte ausblenden, Schritt für Schritt. |
+| `acceptance.ts` | Spiegel von `LineAcceptance.java`: Status einer Zeile pro Ort (offen / halb akzeptiert / akzeptiert) und wo sie sonst schon akzeptiert ist. Die beiden müssen gleich bleiben (je ein Test pro Seite). |
 | `look.ts` | Farben und Bezeichnungen für Schichten (Frontend, API, Domäne …), Sprachen und Verbindungen; die Farbwerte selbst sind Tokens in `styles.scss`. |
 | `component-diagram.ts` | Komponentendiagramm der Übersicht: Spalten nach Schicht, Aufruf- und REST-Kanten, Fokus pro Komponente, Tests/isolierte ein-/ausblenden. |
 | `test-overview.ts` | Testübersicht: pro Testfall die Komponenten und die abgedeckten Codestellen (direkt / über …), mit Sprüngen. |

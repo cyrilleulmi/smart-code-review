@@ -14,6 +14,7 @@ interface EditorContent {
   kind: 'overview' | 'group' | 'flow';
   title?: string;
   description?: string | null;
+  details?: { builds?: string | null; divides?: string | null } | null;
   icon?: string;
   slots?: Slot[];
   scope?: string;
@@ -49,7 +50,7 @@ export class App {
       case 'category': {
         const c = cats.find((x) => x.id === sel.id)!;
         return {
-          kind: 'group', title: c.label, description: c.description, icon: c.icon,
+          kind: 'group', title: c.label, description: c.description, details: c, icon: c.icon,
           slots: this.store.slotsFor(sel), scope: `category:${c.id}`, crumbs: [c.label],
         };
       }
@@ -57,7 +58,7 @@ export class App {
         const c = cats.find((x) => x.groups.some((g) => g.id === sel.id))!;
         const g = c.groups.find((x) => x.id === sel.id)!;
         return {
-          kind: 'group', title: g.label, description: g.description ?? c.description, icon: c.id === 'logic' || c.id === 'tests' ? 'file' : c.icon,
+          kind: 'group', title: g.label, description: g.description ?? c.description, details: c, icon: c.id === 'logic' || c.id === 'tests' ? 'file' : c.icon,
           slots: this.store.slotsFor(sel), scope: `group:${g.id}`, crumbs: [c.label, g.label],
         };
       }
