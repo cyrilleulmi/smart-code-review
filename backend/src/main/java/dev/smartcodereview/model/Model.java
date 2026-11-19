@@ -686,11 +686,20 @@ public final class Model {
 
     // ---------------------------------------------------------------- comments
 
-    /** kind: review (inline) | issue (general). side: RIGHT (new) | LEFT (old). */
+    /**
+     * kind: review (inline) | issue (general). side: RIGHT (new) | LEFT (old). thread: the host's id of the thread the
+     * comment belongs to (GitLab: discussion id), null where the host has none. resolved: state of that thread, the
+     * same on all its comments - null when it cannot be resolved (a plain comment, or a host without this), else
+     * whether it is resolved.
+     */
     @RegisterForReflection
     public record Comment(long id, String kind, String path, Integer line, String side, String key,
                           String body, String author, String avatarUrl, String createdAt, String url,
-                          Long inReplyTo) {
+                          Long inReplyTo, String thread, Boolean resolved) {
+    }
+
+    @RegisterForReflection
+    public record ResolveRequest(boolean resolved) {
     }
 
     /**
@@ -700,6 +709,31 @@ public final class Model {
     @RegisterForReflection
     public record NewComment(String path, Integer line, String side, String body, Long inReplyTo,
                              Integer oldLine, Integer newLine) {
+    }
+
+    // ---------------------------------------------------------------- approve & merge
+
+    /**
+     * Where a PR stands on the code host, read live for approving and merging it. state: open | merged | closed.
+     * headSha: its head now (may be newer than the snapshot). approvedBy: logins. approvalsLeft: required approvals
+     * still missing (0 when none are required). canApprove: the user may approve or revoke the approval. canMerge:
+     * the user has the right to merge. mergeable: the host would merge it now; blocker: German text why not (null
+     * when mergeable). squash, removeSourceBranch: what the PR is set to do on merge. pipeline: status of the head
+     * pipeline as the host names it (success, failed, running, ...), null without one.
+     */
+    @RegisterForReflection
+    public record PrStatus(String state, boolean draft, String headSha, List<String> approvedBy, boolean approvedByMe,
+                           boolean canApprove, int approvalsLeft, boolean canMerge, boolean mergeable, String blocker,
+                           boolean squash, boolean removeSourceBranch, String pipeline) {
+    }
+
+    @RegisterForReflection
+    public record ApprovalRequest(boolean approved) {
+    }
+
+    /** squash, removeSourceBranch: null = as the PR is set. */
+    @RegisterForReflection
+    public record MergeOptions(Boolean squash, Boolean removeSourceBranch) {
     }
 
     // ---------------------------------------------------------------- api

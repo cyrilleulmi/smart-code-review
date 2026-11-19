@@ -157,6 +157,10 @@ export class CodeBlock {
   protected readonly replyTo = signal<number | null>(null);
   protected readonly draft = signal('');
   protected readonly sending = signal(false);
+  /** Resolved threads the user opened (root comment ids); they are folded to one line otherwise. */
+  private readonly openThreads = signal<ReadonlySet<number>>(new Set());
+  /** Thread whose state is being changed on the code host. */
+  protected readonly resolving = signal<string | null>(null);
   private lastClicked: number | null = null;
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
 
@@ -775,6 +779,35 @@ export class CodeBlock {
     this.replyTo.set(null);
     this.draft.set('');
     this.editorKey.set(this.editorKey() === line.key ? null : line.key);
+  }
+
+  /** An open thread shows its comments; a resolved one only after a click on its line. */
+  protected threadOpen(thread: Thread): boolean {
+    return !thread.root.resolved || this.openThreads().has(thread.root.id);
+  }
+
+  protected toggleThread(thread: Thread): void {
+    const open = new Set(this.openThreads());
+    if (!open.delete(thread.root.id)) {
+      open.add(thread.root.id);
+    }
+    this.openThreads.set(open);
+  }
+
+  /** Resolves the thread on the code host, or opens it again; a thread just resolved folds. */
+  protected resolve(thread: Thread): void {
+    const id = thread.root.thread;
+    if (!id || thread.root.resolved == null || this.resolving()) {
+      return;
+    }
+    const resolved = !thread.root.resolved;
+    this.resolving.set(id);
+    this.store.resolveThread(id, resolved, (ok) => {
+      this.resolving.set(null);
+      if (ok && resolved && this.openThreads().has(thread.root.id)) {
+        this.toggleThread(thread);
+      }
+    });
   }
 
   protected openReply(thread: Thread): void {

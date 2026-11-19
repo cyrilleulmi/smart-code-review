@@ -696,6 +696,65 @@ public class ReviewService {
         return provider(ref.provider()).postComment(ref, snapshot, comment);
     }
 
+    /** Resolves a thread of comments on the code host or opens it again; answers with the comments as they are now. */
+    public List<Comment> resolveThread(PrRef ref, String thread, boolean resolved) {
+        if (ref.number() == 0) {
+            throw new ProviderException(400, "Beim ganzen Repository gibt es keinen Pull Request, an den Kommentare gehen könnten");
+        }
+        ReviewProvider provider = provider(ref.provider());
+        provider.resolveThread(ref, thread, resolved);
+        List<Comment> comments = provider.comments(ref);
+        store.write(prDirFile(ref, "comments.json"), comments);
+        return comments;
+    }
+
+    // ------------------------------------------------------------------ approve & merge
+
+    /** Where the PR stands on the code host; empty for a repository and for hosts without approve/merge here. */
+    public Optional<Model.PrStatus> status(PrRef ref) {
+        return ref.number() == 0 ? Optional.empty() : provider(ref.provider()).status(ref);
+    }
+
+    /** Approves the PR at the head that was loaded (or revokes the approval); answers with the status afterwards. */
+    public Model.PrStatus approve(PrRef ref, boolean approved) {
+        requirePullRequest(ref);
+        ReviewProvider provider = provider(ref.provider());
+        // revoking needs no reviewed head: it takes back what was said about an older one too
+        provider.approve(ref, approved ? reviewedHead(ref, provider) : null, approved);
+        return provider.status(ref).orElseThrow();
+    }
+
+    /** Merges the PR at the head that was loaded; answers with the status afterwards. */
+    public Model.PrStatus merge(PrRef ref, Model.MergeOptions options) {
+        requirePullRequest(ref);
+        ReviewProvider provider = provider(ref.provider());
+        provider.merge(ref, reviewedHead(ref, provider), options);
+        return provider.status(ref).orElseThrow();
+    }
+
+    private static void requirePullRequest(PrRef ref) {
+        if (ref.number() == 0) {
+            throw new ProviderException(400, "Ein ganzes Repository lässt sich weder genehmigen noch mergen");
+        }
+    }
+
+    /**
+     * The head commit of the snapshot - what the user has seen. Refuses when the PR has newer commits on the host:
+     * nobody should approve or merge code the tool has not shown.
+     */
+    private String reviewedHead(PrRef ref, ReviewProvider provider) {
+        String now = provider.status(ref)
+                .orElseThrow(() -> new ProviderException(400, provider.label() + " kann hier nicht genehmigen oder mergen"))
+                .headSha();
+        String loaded = store.read(snapshotFile(ref), Snapshot.class)
+                .orElseThrow(() -> new ProviderException(409, "PR zuerst öffnen")).pr().headSha();
+        if (now != null && !now.equals(loaded)) {
+            throw new ProviderException(409, "Es gibt neue Commits (" + now.substring(0, Math.min(7, now.length()))
+                    + "), die noch nicht geladen sind. Zuerst neu laden.");
+        }
+        return loaded;
+    }
+
     // ------------------------------------------------------------------ commits & blame
 
     /**

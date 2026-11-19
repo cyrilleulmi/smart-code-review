@@ -132,6 +132,17 @@ Alle Funktionen von SmartCodeReview als prüfbare Anforderungen, mit Akzeptanzkr
 | FR-KOM-03 | Das System muss auf bestehende Inline-Kommentare antworten lassen. | Antwort landet im selben Thread. | M |
 | FR-KOM-04 | Das System muss einen allgemeinen Kommentar zum PR schreiben lassen. | Editor auf der Übersicht. | M |
 | FR-KOM-05 | Im Repository-Modus darf es keine Kommentare geben. | Keine Kommentar-Knöpfe; `POST …/0/comments` → 400 mit Meldung; `GET` → leere Liste. | M |
+| FR-KOM-06 | Das System muss zeigen, ob ein Kommentar-Thread aufgelöst ist, und ihn auflösen und wieder öffnen lassen. | Jeder Kommentar trägt `thread` (Id beim Host) und `resolved` (Zustand des Threads; `null` = nicht auflösbar). GitLab: Discussion-Id; ein Thread gilt als aufgelöst, wenn alle seine auflösbaren Notes es sind. Unter einem auflösbaren Thread steht «Thread auflösen» bzw. «Thread wieder öffnen» (`PUT …/threads/{thread}/resolved`, sofort auf dem Host, kein Pending Review – A5). Ein aufgelöster Thread ist im Code auf eine Zeile eingeklappt (Häkchen, «Aufgelöst», Autor, Anfang des Kommentars, Anzahl Antworten) und öffnet sich per Klick; nach dem Auflösen klappt er ein. Die Übersicht zeigt die Anzahl offener Threads und bietet den Knopf auch für allgemeine Threads. Einfache Kommentare (GitLab `individual_note`) und GitHub haben keinen Knopf; die API antwortet dort mit 400, im Repository-Modus ebenso. | T: GitLabProviderHttpTest (Zustand lesen, auflösen und wieder öffnen, nur GitLab); manuell gegen einen nachgebauten GitLab-Server (auflösen, wieder öffnen, allgemeiner Thread). Nicht gegen ein echtes GitLab geprüft. |
+
+## 7a. Review abschliessen (FR-ABS)
+
+| ID | Anforderung | Akzeptanzkriterien | Nachweis |
+|---|---|---|---|
+| FR-ABS-01 | Das System muss zeigen, wo ein PR auf dem Code-Host steht. | `GET …/status`, live gelesen: Zustand (offen, gemergt, geschlossen), wer genehmigt hat, fehlende Genehmigungen, Stand der Pipeline, mergebar oder der Grund dagegen auf Deutsch (GitLab `detailed_merge_status`: offene Threads, Konflikte, Entwurf, Pipeline, fehlende Genehmigungen, Rebase nötig …; vor GitLab 15.6 `merge_status`; Unbekanntes mit dem Wert von GitLab). Die Übersicht zeigt das unter dem Titel, mit Knopf zum Neuladen (lädt auch die Kommentare). Ohne Unterstützung (GitHub, ganzes Repository): 204, keine Anzeige. | T: GitLabProviderHttpTest (Genehmigungen und Mergebarkeit, mergebar, gemergt, Gründe); review-actions.spec.ts (Text der Genehmigungen); Rest M |
+| FR-ABS-02 | Das System muss einen PR genehmigen und die Genehmigung zurückziehen lassen. | «Genehmigen» / «Genehmigung zurückziehen» wirken sofort (`PUT …/approval`; GitLab `approve` mit `sha`, `unapprove`). Der Knopf ist gesperrt, wenn der Host es der Person nicht erlaubt (z. B. eigener MR). Sind noch Zeilen nicht als ok markiert, steht das als Hinweis da; es sperrt nicht. | T: GitLabProviderHttpTest (genehmigen mit Head, zurückziehen); Rest M |
+| FR-ABS-03 | Das System muss einen PR mergen lassen, aber nie ohne Rückfrage. | «Mergen …» öffnet eine Rückfrage mit Ziel-Branch und den Optionen «Commits zusammenfassen (Squash)» und «Quell-Branch löschen», vorbelegt wie im PR eingestellt; erst «Jetzt mergen» mergt (`POST …/merge`, GitLab `merge` mit `sha`). Gesperrt ohne Merge-Recht oder solange der Host nicht mergen würde (Grund als Tooltip und im Text). Lehnt GitLab ab (405, 406, 422), nennt die Meldung den Grund. Danach zeigt die Übersicht «Gemergt», und die PR-Liste lädt neu. | T: GitLabProviderHttpTest (mergen mit Head und Optionen, ohne Optionen, Ablehnung mit Grund); Rest M |
+| FR-ABS-04 | Genehmigt und gemergt werden darf nur der Stand, der im Tool geladen ist. | Hat der Host einen neueren Head als der Snapshot, sind «Genehmigen» und «Mergen …» gesperrt, mit Hinweis und «Neu laden»; die API antwortet mit 409 «Es gibt neue Commits …». Zusätzlich geht der geladene Head als `sha` an GitLab, das bei einem Wechsel dazwischen selbst ablehnt. Zurückziehen geht immer. | M (nachgebauter GitLab-Server: neuer Head → 409, Knöpfe gesperrt) |
+| FR-ABS-05 | Hosts ohne diese Funktion müssen sauber ablehnen. | GitHub: keine Anzeige, `PUT …/approval` und `POST …/merge` → 400 mit Meldung; ganzes Repository ebenso. | T: GitLabProviderHttpTest (nur GitLab); Rest M |
 
 ## 8. Commits (FR-COM)
 
@@ -255,11 +266,12 @@ Alle Funktionen von SmartCodeReview als prüfbare Anforderungen, mit Akzeptanzkr
 | `frontend/src/app/flow-layout.spec.ts` | 10 | FR-UI-09 (Schichten ohne Verbindung in Reihen), FR-UI-21 (Anordnung mit ELK: Aufrufer links, keine Überlappung, Methoden im Rahmen ihrer Klasse, Rückruf; Pfad mit runden Ecken, Mitte für die Beschriftung, Kurve zwischen verschobenen Knoten, Rahmen um seine Knoten) |
 | `frontend/src/app/split-diff.spec.ts` | 8 | FR-UI-19 (Paarung der Zeilen Seite an Seite, Blöcke mit nur einer Seite) |
 | `frontend/src/app/i18n.spec.ts` | 8 | FR-UI-16, NFR-15 (Übersetzungen vollständig, Platzhalter, Texte der mitgelieferten Regeln, zusammengesetzte Backend-Texte, Umschalten) |
+| `frontend/src/app/review-actions.spec.ts` | 4 | FR-ABS-01 (Text der Genehmigungen: niemand, Namen, fehlende, Englisch) |
 | `provider/RepoListsTest` | 2 | FR-ZUG-08 (Filter, Reihenfolge und Doppelte beim Zusammenführen) |
 | `github/GitHubSearchTest` | 3 | FR-ZUG-08 (Suche auf eigenes Konto und Organisationen, eigene Qualifier, Länge) |
 | `provider/JsonHttpTest` | 4 | FR-ZUG-06 (JSON lesen, Login-Seite statt JSON, Fehlerseite behält ihren Status, nicht erreichbarer Host) |
 | `gitlab/ProviderUrlTest` | 3 | FR-ZUG-03, FR-REP-01 |
-| `gitlab/GitLabProviderHttpTest` | 7 | FR-SNP-04 (GitLab-MR-Diffs in Seiten zu 30, gegen einen lokalen HTTP-Server), FR-ZUG-09, -10 (Cookie des SSO-Proxys: mitschicken, im Betrieb ersetzen) |
+| `gitlab/GitLabProviderHttpTest` | 19 | FR-SNP-04 (GitLab-MR-Diffs in Seiten zu 30, gegen einen lokalen HTTP-Server), FR-ZUG-09, -10 (Cookie des SSO-Proxys: mitschicken, im Betrieb ersetzen), FR-KOM-06 (Threads: Zustand, auflösen, wieder öffnen), FR-ABS-01 bis -05 (Stand lesen, genehmigen, mergen, Ablehnung mit Grund, nur GitLab) |
 | `repo/RepositorySnapshotTest` | 1 | FR-REP-02, -03 |
 
 **Anforderungen ohne automatischen Test** (nur manuell oder gar nicht geprüft). Sie sind die Grundlage für V-02 bis V-04 in [11-verbesserungen.md](11-verbesserungen.md):

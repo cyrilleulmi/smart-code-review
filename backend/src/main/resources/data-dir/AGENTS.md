@@ -208,6 +208,12 @@ Leave `reload` as it is when you edit the file; to review only what is new, mark
   `commitChecks` (`fixTitles`, `testAdjustTitles`, `notCode`). A warn finding is worth a look: was the test bent to
   the code, does the fix need a test?
 * `GET  …/blame?path=<changed file>` – git blame at the PR head
+* `GET  …/status` – where the PR stands on the host (approvals, `mergeable`, `blocker`); 204 where not supported
+* `PUT  …/approval` with `{"approved":true}` – approves the PR IMMEDIATELY (`false` revokes); GitLab only
+* `POST …/merge` with `{}` – merges the PR IMMEDIATELY and irreversibly; GitLab only. Never approve or merge unless
+  the user asked for exactly that
+* `PUT  …/threads/{thread}/resolved` with `{"resolved":true}` – resolves a GitLab thread IMMEDIATELY (`false` opens it
+  again); `thread` and `resolved` are fields of each comment (`resolved` null: the thread cannot be resolved)
 * `GET  …/comments`, `POST …/comments` – comments; POST publishes IMMEDIATELY on GitHub/GitLab:
   inline `{"path":"src/a.ts","line":12,"side":"RIGHT","body":"…"}`, reply `{"inReplyTo":123,"body":"…"}`,
   general `{"body":"…"}`. For unchanged context lines also send `oldLine` and `newLine` (GitLab needs both).

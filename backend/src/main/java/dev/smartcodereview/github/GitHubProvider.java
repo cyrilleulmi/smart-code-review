@@ -452,13 +452,13 @@ public class GitHubProvider implements ReviewProvider {
         return new Comment(c.path("id").asLong(), "review", c.path("path").asText(null), line, side, key,
                 c.path("body").asText(), c.path("user").path("login").asText(), c.path("user").path("avatar_url").asText(null),
                 c.path("created_at").asText(), c.path("html_url").asText(),
-                c.hasNonNull("in_reply_to_id") ? c.get("in_reply_to_id").asLong() : null);
+                c.hasNonNull("in_reply_to_id") ? c.get("in_reply_to_id").asLong() : null, null, null);
     }
 
     private Comment issueComment(JsonNode c) {
         return new Comment(c.path("id").asLong(), "issue", null, null, null, null, c.path("body").asText(),
                 c.path("user").path("login").asText(), c.path("user").path("avatar_url").asText(null),
-                c.path("created_at").asText(), c.path("html_url").asText(), null);
+                c.path("created_at").asText(), c.path("html_url").asText(), null, null, null);
     }
 
     // ---------------------------------------------------------------- http

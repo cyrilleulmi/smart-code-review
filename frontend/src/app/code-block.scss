@@ -893,14 +893,72 @@ button.gap.open {
   }
 }
 
+.thread-actions {
+  display: flex;
+  gap: 14px;
+  padding: 2px 0 0 30px;
+}
+
 .reply {
   border: 0;
   background: none;
   color: var(--accent-fg);
   font: inherit;
   font-size: 12px;
-  padding: 2px 0 0 30px;
+  padding: 0;
   cursor: pointer;
+
+  &:disabled {
+    color: var(--fg-dim);
+    cursor: default;
+  }
+}
+
+/* a resolved thread: one line, its comments only after a click */
+.thread.resolved {
+  padding: 4px 10px;
+}
+
+.fold {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: var(--fg-muted);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+
+  app-icon {
+    flex: none;
+  }
+
+  .done {
+    color: var(--ok);
+  }
+
+  .state {
+    flex: none;
+    color: var(--fg);
+  }
+
+  .preview {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .count {
+    flex: none;
+    color: var(--fg-dim);
+  }
 }
 
 .editor {

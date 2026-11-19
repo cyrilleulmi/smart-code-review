@@ -61,7 +61,11 @@ Alle PR-Endpunkte unter `/api/prs/{provider}/{owner}/{repo}/{number}`; `provider
 | GET | `…/{number}/commits` | Commits des PRs (älteste zuerst) und welcher Commit welche geänderte Zeile gemacht hat (`commits.json`) |
 | GET | `…/{number}/file?path=…` | Eine geänderte Datei als Ganzes am PR-Stand: jede Zeile der neuen Version, gelöschte Zeilen eingewoben, gleiche Zeilenschlüssel wie die Segmente (Code-Ansicht «Ganze Klassen»; aus `sources/`, fehlende Datei wird einmal geholt) |
 | GET | `…/{number}/blame?path=…` | Git-Blame einer geänderten Datei am PR-Stand (Cache unter `blame/`) |
-| GET | `…/{number}/comments` | Kommentare von GitHub (Inline + allgemein) |
+| GET | `…/{number}/comments` | Kommentare von GitHub oder GitLab (Inline + allgemein). `thread`: Id des Threads beim Host (GitLab: Discussion), `resolved`: Zustand des Threads, auf allen seinen Kommentaren gleich – `null`, wenn er sich nicht auflösen lässt (einfacher Kommentar, GitHub). |
+| GET | `…/{number}/status` | Stand des PRs auf dem Host, live gelesen: `state` (open, merged, closed), `headSha`, `approvedBy`, `approvedByMe`, `canApprove`, `approvalsLeft`, `canMerge`, `mergeable`, `blocker` (Grund auf Deutsch, warum er sich nicht mergen lässt), `squash`, `removeSourceBranch`, `pipeline`. 204 ohne Inhalt, wo Genehmigen und Mergen nicht unterstützt sind (GitHub, ganzes Repository). |
+| PUT | `…/{number}/approval` | `{"approved":true}` genehmigt den PR sofort auf dem Host, `false` zieht die Genehmigung zurück. Antwort: neuer Stand. Genehmigt wird nur der geladene Head; hat der Host neuere Commits → 409. Nur GitLab; sonst 400. |
+| POST | `…/{number}/merge` | Mergt den PR sofort (nicht umkehrbar). Body `{}` oder `{"squash":…,"removeSourceBranch":…}` (ohne Angabe: wie im PR eingestellt). Antwort: neuer Stand. Nur der geladene Head; neuere Commits oder Ablehnung durch den Host → 409 mit Grund. Nur GitLab; sonst 400. |
+| PUT | `…/{number}/threads/{thread}/resolved` | `{"resolved":true}` löst einen Thread sofort auf dem Host auf, `false` öffnet ihn wieder. Antwort: alle Kommentare im neuen Stand. Nur GitLab; sonst 400. |
 | POST | `…/{number}/comments` | Kommentar sofort veröffentlichen: inline `{path,line,side,body}` (+ `oldLine`/`newLine` für Kontextzeilen, von GitLab benötigt), Antwort `{inReplyTo,body}`, allgemein `{body}` |
 
 Fehler kommen als `{"message": "…"}` mit passendem HTTP-Status.
@@ -75,6 +79,7 @@ Angular 22, standalone Komponenten, Signals, zoneless, `OnPush`.
 | `review.store.ts` | Zentraler Zustand (Signals), Hash-Routing (`#/github/o/r/12/c/<sha>/flow/flow-1`), optimistische Markierungen pro Ort («Slots» = Segment an einem Ort), Commit-Filter (filtert Slots, Fortschritt und Markierungen auf die Zeilen eines Commits), Blame-Cache, Neuladen des Status beim Fokus des Fensters (damit Änderungen von Agenten sofort erscheinen). |
 | `app.*` | IntelliJ-Shell: Main-Toolbar, Tool-Window-Stripe, verschiebbares Tool-Fenster, Breadcrumbs, Statusleiste, Shortcuts Alt+1/Alt+2. |
 | `pr-list.ts` | Tool-Fenster «Pull Requests» mit Filter und Suche. |
+| `review-actions.ts` | Auf der Übersicht: Stand des PRs auf dem Host, «Genehmigen» / «Genehmigung zurückziehen» und «Mergen …» mit Rückfrage. |
 | `account-cookie.ts` | Dialog aus der Statusleiste: Session-Cookies eines SSO-Proxys vor dem Code-Host zur Laufzeit setzen oder entfernen. |
 | `review-tree.*` | Tool-Fenster «Review»: Kategorien / Flows / Dateien als Baum mit Fortschritt und ✓-Aktion, Tab *Commits*. |
 | `commit-list.ts` | Commits des PRs mit Fortschritt; Klick filtert alle Ansichten auf einen Commit, ✓ markiert seine Zeilen (Review-Fenster und Übersicht). |

@@ -6,6 +6,10 @@ Docker-Images: `culmi/smart-code-review:<version>` und `:latest` (= letztes Rele
 
 ## [Unreleased]
 
+### Neu
+- **GitLab-Merge-Requests genehmigen und mergen:** Die Übersicht eines Merge Requests zeigt, wo er auf GitLab steht – wer genehmigt hat, wie viele Genehmigungen fehlen, den Stand der Pipeline und ob er sich mergen lässt oder was dagegen spricht (offene Threads, Konflikte, Entwurf, Pipeline …). Mit «Genehmigen» gibst du deine Genehmigung (Approve), mit «Genehmigung zurückziehen» nimmst du sie zurück. «Mergen …» fragt zuerst nach, mit den Optionen «Commits zusammenfassen (Squash)» und «Quell-Branch löschen», vorbelegt wie im Merge Request eingestellt. Beides wirkt sofort auf GitLab. Genehmigt und gemergt wird nur der Stand, der im Tool geladen ist: Gibt es auf GitLab neuere Commits, sind die Knöpfe gesperrt, bis du neu lädst. Solange noch Zeilen nicht als ok markiert sind, steht das als Hinweis da. Pull Requests auf GitHub bleiben unverändert. API: `GET …/status`, `PUT …/approval`, `POST …/merge`.
+- **GitLab-Threads auflösen:** Kommentar-Threads eines Merge Requests lassen sich im Tool auflösen und wieder öffnen, so wie «Resolve thread» in GitLab. Unter einem Thread steht neben «Antworten» der Knopf «Thread auflösen» bzw. «Thread wieder öffnen»; die Änderung geht sofort an GitLab. Ein aufgelöster Thread klappt im Code auf eine Zeile zusammen (Häkchen, «Aufgelöst», Autor und Anfang des Kommentars) und öffnet sich mit einem Klick. Die Übersicht zeigt, wie viele Threads noch offen sind, und bietet dasselbe für allgemeine Threads. Einfache Kommentare ohne Thread und Pull Requests auf GitHub bleiben unverändert. `comments.json` und die API tragen pro Kommentar neu `thread` und `resolved`; API: `PUT …/threads/{thread}/resolved`.
+
 ## [0.9.0] – 2026-11-19
 
 ### Neu

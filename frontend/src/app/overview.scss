@@ -265,6 +265,30 @@ h2 {
     white-space: pre-wrap;
     margin-top: 2px;
   }
+
+  .resolved {
+    margin-left: 6px;
+    color: var(--ok);
+
+    app-icon {
+      vertical-align: -2px;
+    }
+  }
+
+  .resolve {
+    margin-left: 6px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent-fg);
+    font: inherit;
+    cursor: pointer;
+
+    &:disabled {
+      color: var(--fg-dim);
+      cursor: default;
+    }
+  }
 }
 
 .muted {

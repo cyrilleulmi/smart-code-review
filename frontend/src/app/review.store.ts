@@ -10,8 +10,10 @@ import {
   LineMark,
   LogEntry,
   Me,
+  MergeOptions,
   NewComment,
   PrKey,
+  PrStatus,
   PullRequestSummary,
   ReloadInfo,
   ReviewBundle,
@@ -110,6 +112,8 @@ export class ReviewStore {
   /** place -> lines ok at that place only */
   readonly okAt = signal<ReadonlyMap<string, ReadonlySet<string>>>(new Map());
   readonly comments = signal<Comment[]>([]);
+  /** Where the PR stands on the code host (approvals, mergeable); null while unknown or where the host has no such thing. */
+  readonly status = signal<PrStatus | null>(null);
   readonly log = signal<LogEntry[]>([]);
   readonly selection = signal<Selection>({ kind: 'overview' });
   readonly collapseDone = signal(true);
@@ -494,6 +498,7 @@ export class ReviewStore {
     this.flowPages.set(new Map());
     this.bundle.set(null);
     this.comments.set([]);
+    this.status.set(null);
     this.ok.set(new Set());
     this.okAt.set(new Map());
     history.replaceState(null, '', location.pathname);
@@ -506,12 +511,14 @@ export class ReviewStore {
     }
     if (!previous || prLabel(previous) !== prLabel(b.pr)) {
       this.flowPages.set(new Map()); // the flows of another PR
+      this.status.set(null);
     }
     this.bundle.set(b);
     this.applyState(b.state);
     this.loading.set(null);
     this.select(this.isValidSelection(selection, b) ? selection : { kind: 'overview' });
     this.loadComments();
+    this.loadStatus();
     this.loadCommits();
   }
 
@@ -1015,6 +1022,87 @@ export class ReviewStore {
       },
       error: (e) => {
         this.error.set(t('Kommentar fehlgeschlagen: {error}', { error: errorMessage(e) }));
+        done(false);
+      },
+    });
+  }
+
+  // ------------------------------------------------------------- approve & merge
+
+  /** Reads where the PR stands on the code host; quietly nothing when the host cannot say. */
+  loadStatus(): void {
+    const key = this.prKey();
+    if (!key || key.number === 0) {
+      this.status.set(null);
+      return;
+    }
+    this.api.status(key).subscribe({
+      next: (s) => this.samePr(key) && this.status.set(s ?? null),
+      error: () => this.samePr(key) && this.status.set(null),
+    });
+  }
+
+  private samePr(key: PrKey): boolean {
+    const now = this.prKey();
+    return !!now && prLabel(now) === prLabel(key);
+  }
+
+  /** Approves the PR on the code host, or revokes the approval. */
+  approve(approved: boolean, done: (ok: boolean) => void): void {
+    const key = this.prKey();
+    if (!key) {
+      return done(false);
+    }
+    this.api.approve(key, approved).subscribe({
+      next: (s) => {
+        this.status.set(s);
+        this.notify(approved ? t('Genehmigt') : t('Genehmigung zurückgezogen'));
+        done(true);
+      },
+      error: (e) => {
+        this.error.set(t('Genehmigen fehlgeschlagen: {error}', { error: errorMessage(e) }));
+        this.loadStatus();
+        done(false);
+      },
+    });
+  }
+
+  /** Merges the PR on the code host. */
+  merge(options: MergeOptions, done: (ok: boolean) => void): void {
+    const key = this.prKey();
+    if (!key) {
+      return done(false);
+    }
+    this.api.merge(key, options).subscribe({
+      next: (s) => {
+        this.status.set(s);
+        this.notify(t('Gemergt'));
+        this.loadPrs();
+        done(true);
+      },
+      error: (e) => {
+        this.error.set(t('Mergen fehlgeschlagen: {error}', { error: errorMessage(e) }));
+        this.loadStatus();
+        done(false);
+      },
+    });
+  }
+
+  /** Resolves a thread of comments on the code host or opens it again. */
+  resolveThread(thread: string, resolved: boolean, done: (ok: boolean) => void): void {
+    const key = this.prKey();
+    if (!key) {
+      return done(false);
+    }
+    this.api.resolveThread(key, thread, resolved).subscribe({
+      next: (comments) => {
+        this.comments.set(comments);
+        this.loadStatus(); // open threads can block the merge
+        this.notify(resolved ? t('Thread aufgelöst') : t('Thread wieder geöffnet'));
+        done(true);
+      },
+      error: (e) => {
+        this.error.set(t('Thread nicht geändert: {error}', { error: errorMessage(e) }));
         done(false);
       },
     });

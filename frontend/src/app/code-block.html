@@ -237,7 +237,22 @@
             @let line = c.line;
             @if (showThreads(line)) {
               @for (th of threads().get(line.key!) ?? []; track th.root.id) {
-                <div class="thread" [class.right]="c.side === 'new'">
+                <div class="thread" [class.right]="c.side === 'new'" [class.resolved]="th.root.resolved">
+                  @if (th.root.resolved) {
+                    <button type="button" class="fold" (click)="toggleThread(th)" [attr.aria-expanded]="threadOpen(th)"
+                            [title]="threadOpen(th) ? t('Aufgelösten Thread einklappen') : t('Aufgelösten Thread zeigen')">
+                      <app-icon [name]="threadOpen(th) ? 'chevronDown' : 'chevronRight'" [size]="11" />
+                      <app-icon name="check" [size]="12" class="done" />
+                      <span class="state">{{ t('Aufgelöst') }}</span>
+                      @if (!threadOpen(th)) {
+                        <span class="preview"><b>{{ th.root.author }}</b> {{ th.root.body }}</span>
+                        @if (th.replies.length) {
+                          <span class="count">+{{ th.replies.length }}</span>
+                        }
+                      }
+                    </button>
+                  }
+                  @if (threadOpen(th)) {
                   @for (cm of [th.root].concat(th.replies); track cm.id) {
                     <div class="comment">
                       @if (cm.avatarUrl) {
@@ -261,7 +276,15 @@
                       </div>
                     </div>
                   } @else {
-                    <button type="button" class="reply" (click)="openReply(th)">{{ t('Antworten') }}</button>
+                    <div class="thread-actions">
+                      <button type="button" class="reply" (click)="openReply(th)">{{ t('Antworten') }}</button>
+                      @if (th.root.resolved != null && th.root.thread) {
+                        <button type="button" class="reply" [disabled]="resolving() === th.root.thread" (click)="resolve(th)">
+                          {{ th.root.resolved ? t('Thread wieder öffnen') : t('Thread auflösen') }}
+                        </button>
+                      }
+                    </div>
+                  }
                   }
                 </div>
               }
